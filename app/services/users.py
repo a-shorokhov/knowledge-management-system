@@ -1,0 +1,89 @@
+from fastapi import Depends
+
+from repositories.users import UserRepository
+from schemas.users import CreateUserRequest, UpdateUserRequest
+
+
+class UserService:
+    def __init__(self, repository: UserRepository = Depends()):
+        self.repository = repository
+
+    def create_user(self, raw_user: CreateUserRequest):
+        if self.repository.get_user_by_username(raw_user.username):
+            return {
+                "success": False,
+                "message": "Пользователь уже существует",
+            }
+
+        user = self.repository.create_user(
+            raw_user.username,
+            raw_user.email,
+            raw_user.password,
+        )
+
+        return {
+            "success": True,
+            "id": user["id"],
+            "username": user["username"],
+            "email": user["email"],
+        }
+
+    def get_all_users(self):
+        return self.repository.get_all_users()
+
+    def get_user_by_id(self, user_id: int):
+        user = self.repository.get_user_by_id(user_id)
+
+        if user is None:
+            return {
+                "success": False,
+                "message": "Пользователь не найден",
+            }
+
+        return {
+            "success": True,
+            "id": user["id"],
+            "username": user["username"],
+            "email": user["email"],
+        }
+
+    def edit_user(self, user_id: int, upd_data: UpdateUserRequest):
+        user = self.repository.get_user_by_id(user_id)
+
+        if user is None:
+            return {
+                "success": False,
+                "message": "Пользователь не найден",
+            }
+
+        upd_data = upd_data.model_dump()
+        clear_dict = {}
+
+        for k, v in upd_data.items():
+            if v:
+                clear_dict[k] = v
+
+        self.repository.edit_user(user_id, clear_dict)
+
+        return {
+            "success": True,
+            "id": user["id"],
+            "username": user["username"],
+            "email": user["email"],
+        }
+
+    def delete_user(self, user_id: int):
+        user = self.repository.get_user_by_id(user_id)
+
+        if user is None:
+            return {
+                "success": False,
+                "message": "Пользователь не найден",
+            }
+
+        self.repository.delete_user(user_id)
+
+        return {
+            "success": True,
+            "message": "Пользователь удалён",
+        }
