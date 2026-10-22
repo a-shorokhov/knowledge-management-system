@@ -1,7 +1,11 @@
 from fastapi import Depends
+from passlib.context import CryptContext
 
-from repositories.users import UserRepository
+from repositories.users import UserAlreadyExistsError, UserRepository
 from schemas.users import CreateUserRequest, UpdateUserRequest
+
+
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
 class UserService:
@@ -15,11 +19,17 @@ class UserService:
                 "message": "Пользователь уже существует",
             }
 
-        user = self.repository.create_user(
-            raw_user.username,
-            raw_user.email,
-            raw_user.password,
-        )
+        try:
+            user = self.repository.create_user(
+                raw_user.username,
+                raw_user.email,
+                pwd_context.hash(raw_user.password),
+            )
+        except UserAlreadyExistsError:
+            return {
+                "success": False,
+                "message": "Пользователь уже существует",
+            }
 
         return {
             "success": True,
@@ -63,7 +73,16 @@ class UserService:
             if v:
                 clear_dict[k] = v
 
-        self.repository.edit_user(user_id, clear_dict)
+        if "password" in clear_dict:
+            clear_dict["hashed_password"] = pwd_context.hash(clear_dict.pop("password"))
+
+        user = self.repository.edit_user(user_id, clear_dict)
+
+        if user is None:
+            return {
+                "success": False,
+                "message": "Пользователь не найден",
+            }
 
         return {
             "success": True,
