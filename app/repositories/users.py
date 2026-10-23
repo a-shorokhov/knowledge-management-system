@@ -3,8 +3,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from database import get_db
-from models import User
+from core.database import get_db
+from models.users import User
 
 
 class UserAlreadyExistsError(Exception):
@@ -70,3 +70,8 @@ class UserRepository:
         if user is not None:
             self.db.delete(user)
             self._commit()
+
+    def get_user_for_auth(self, username: str):
+        return self.db.scalar(
+            select(User).where(User.username == username)
+        )
