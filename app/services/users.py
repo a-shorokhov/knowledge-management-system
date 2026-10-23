@@ -1,11 +1,9 @@
 from fastapi import Depends
-from passlib.context import CryptContext
+
+from core.security import hash_password, verify_password, create_access_token
 
 from repositories.users import UserAlreadyExistsError, UserRepository
 from schemas.users import CreateUserRequest, UpdateUserRequest
-
-
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
 class UserService:
@@ -23,7 +21,7 @@ class UserService:
             user = self.repository.create_user(
                 raw_user.username,
                 raw_user.email,
-                pwd_context.hash(raw_user.password),
+                hash_password(raw_user.password),
             )
         except UserAlreadyExistsError:
             return {
@@ -36,6 +34,31 @@ class UserService:
             "id": user["id"],
             "username": user["username"],
             "email": user["email"],
+        }
+
+    def login(self, username: str, password: str):
+        user = self.repository.get_user_for_auth(username)
+
+        if user is None or not verify_password(
+                password,
+                user.hashed_password,
+        ):
+            return {
+                "success": False,
+                "message": "Неверный логин или пароль",
+            }
+
+        token = create_access_token(
+            {
+                "username": user.username,
+                "user_id": user.id,
+            }
+        )
+
+        return {
+            "success": True,
+            "access_token": token,
+            "token_type": "bearer",
         }
 
     def get_all_users(self):
@@ -74,7 +97,7 @@ class UserService:
                 clear_dict[k] = v
 
         if "password" in clear_dict:
-            clear_dict["hashed_password"] = pwd_context.hash(clear_dict.pop("password"))
+            clear_dict["hashed_password"] = hash_password(clear_dict.pop("password"))
 
         user = self.repository.edit_user(user_id, clear_dict)
 

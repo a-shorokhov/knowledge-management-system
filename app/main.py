@@ -6,8 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from api.v1 import users_router
-from database import Base, engine
-from models import User
+from core.database import Base, engine
 
 
 @asynccontextmanager
