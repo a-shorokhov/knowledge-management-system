@@ -2,7 +2,7 @@ from fastapi import Depends
 
 from core.security import hash_password, verify_password, create_access_token
 
-from repositories.users import UserAlreadyExistsError, UserRepository
+from repositories.users import EmailAlreadyExistsError, UserAlreadyExistsError, UserRepository
 from schemas.users import CreateUserRequest, UpdateUserRequest
 
 
@@ -23,6 +23,12 @@ class UserService:
                 raw_user.email,
                 hash_password(raw_user.password),
             )
+        except EmailAlreadyExistsError:
+            return {
+                "success": False,
+                "message": "Email уже используется",
+                "status_code": 400,
+            }
         except UserAlreadyExistsError:
             return {
                 "success": False,
@@ -99,7 +105,14 @@ class UserService:
         if "password" in clear_dict:
             clear_dict["hashed_password"] = hash_password(clear_dict.pop("password"))
 
-        user = self.repository.edit_user(user_id, clear_dict)
+        try:
+            user = self.repository.edit_user(user_id, clear_dict)
+        except EmailAlreadyExistsError:
+            return {
+                "success": False,
+                "message": "Email уже используется",
+                "status_code": 400,
+            }
 
         if user is None:
             return {

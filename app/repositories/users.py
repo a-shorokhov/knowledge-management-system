@@ -11,6 +11,10 @@ class UserAlreadyExistsError(Exception):
     pass
 
 
+class EmailAlreadyExistsError(Exception):
+    pass
+
+
 class UserRepository:
     def __init__(self, db: Session = Depends(get_db)):
         self.db = db
@@ -26,6 +30,15 @@ class UserRepository:
     def _commit(self):
         try:
             self.db.commit()
+        except IntegrityError as exc:
+            self.db.rollback()
+            constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+            if getattr(exc.orig, "pgcode", None) == "23505":
+                if constraint == "uq_users_username":
+                    raise UserAlreadyExistsError from None
+                if constraint == "uq_users_email":
+                    raise EmailAlreadyExistsError from None
+            raise
         except SQLAlchemyError:
             self.db.rollback()
             raise
@@ -33,13 +46,7 @@ class UserRepository:
     def create_user(self, username: str, email: str, hashed_password: str):
         user = User(username=username, email=email, hashed_password=hashed_password)
         self.db.add(user)
-        try:
-            self._commit()
-        except IntegrityError as exc:
-            constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
-            if constraint == "uq_users_username":
-                raise UserAlreadyExistsError from None
-            raise
+        self._commit()
         self.db.refresh(user)
         return self._to_dict(user)
 
