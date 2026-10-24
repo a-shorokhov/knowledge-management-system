@@ -79,7 +79,7 @@ def update_user(
     if user["success"]:
         return user
 
-    raise HTTPException(status_code=404, detail=user["message"])
+    raise HTTPException(status_code=user.get("status_code", 404), detail=user["message"])
 
 
 @router.delete("/users/{user_id}")
