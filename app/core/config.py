@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     TOKEN_LIFETIME_MINUTES: int = Field(default=30, gt=0)
     TOKEN_ALGORITHM: Literal["HS256"] = "HS256"
 
+    S3_ENDPOINT: str = "https://storage.yandexcloud.net"
+    S3_ACCESS_KEY: str
+    S3_SECRET_KEY: SecretStr
+    S3_BUCKET: str
+    S3_REGION: str = "ru-central1"
+
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parent.parent.parent / ".env",
         env_file_encoding="utf-8",

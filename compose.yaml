@@ -10,6 +10,11 @@ services:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
       TOKEN_LIFETIME_MINUTES: ${TOKEN_LIFETIME_MINUTES:-30}
       TOKEN_ALGORITHM: ${TOKEN_ALGORITHM:-HS256}
+      S3_ENDPOINT: ${S3_ENDPOINT:-https://storage.yandexcloud.net}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY in .env}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env}
+      S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET in .env}
+      S3_REGION: ${S3_REGION:-ru-central1}
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     depends_on:

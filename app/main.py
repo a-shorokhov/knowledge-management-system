@@ -5,7 +5,9 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from api.v1 import users_router
+import models
+
+from api.v1 import users_router, modules_router, launches_router, notes_router
 from core.database import Base, engine
 
 
@@ -32,3 +34,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 app.include_router(users_router)
+app.include_router(modules_router)
+app.include_router(launches_router)
+app.include_router(notes_router)
