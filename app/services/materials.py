@@ -12,6 +12,16 @@ from repositories.materials import MaterialRepository
 
 logger = logging.getLogger(__name__)
 MAX_FILE_SIZE = 5 * 1024 * 1024
+ALLOWED_MATERIAL_TYPES = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "text/plain": "txt",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/pdf": "pdf",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "text/csv": "csv",
+}
 
 
 class MaterialService:
@@ -30,6 +40,15 @@ class MaterialService:
             return {
                 "success": False,
                 "message": "Запуск не найден",
+            }
+
+        extension = ALLOWED_MATERIAL_TYPES.get(file.content_type)
+
+        if extension is None:
+            return {
+                "success": False,
+                "message": "Неподдерживаемый тип файла. Разрешены: png, jpg, jpeg, txt, docx, xlsx, pdf, pptx, csv",
+                "status_code": 400,
             }
 
         filename = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
