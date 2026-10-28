@@ -5,6 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from core.config import settings
 from repositories.users import UserRepository
 
+from adapters.file_storage.s3 import S3FileStorageAdapter
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
@@ -55,3 +56,17 @@ def require_user_owner(
         )
 
     return current_user
+
+def get_file_storage():
+    storage = S3FileStorageAdapter(
+        bucket_name=settings.S3_BUCKET,
+        access_key=settings.S3_ACCESS_KEY,
+        secret_key=settings.S3_SECRET_KEY.get_secret_value(),
+        region_name=settings.S3_REGION,
+        url=settings.S3_ENDPOINT,
+    )
+
+    try:
+        yield storage
+    finally:
+        storage.client.close()
