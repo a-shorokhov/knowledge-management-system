@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 import models
 
-from api.v1 import users_router, modules_router, launches_router, notes_router
+from api.v1 import users_router, modules_router, launches_router, notes_router, materials_router
 from core.database import Base, engine
 
 
@@ -37,3 +37,4 @@ app.include_router(users_router)
 app.include_router(modules_router)
 app.include_router(launches_router)
 app.include_router(notes_router)
+app.include_router(materials_router)
