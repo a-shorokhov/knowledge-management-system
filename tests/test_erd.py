@@ -115,6 +115,55 @@ class ERDTests(unittest.TestCase):
         self.section_service = SectionService(self.sections, self.launches, self.file_service)
         self.note_service = NoteService(self.notes, self.launches, self.materials, self.sections)
         self.material_service = MaterialService(self.materials, self.launches, self.sections, self.storage, self.file_service, self.notes)
+                # Поддержка старого и нового контрактов ошибок в тестах.
+        from fastapi import HTTPException
+
+        class ServiceErrorAdapter:
+            def __init__(self, service):
+                self._service = service
+
+            def __getattr__(self, name):
+                original = getattr(self._service, name)
+                if not callable(original):
+                    return original
+
+                def call(*args, **kwargs):
+                    try:
+                        return original(*args, **kwargs)
+                    except HTTPException as exc:
+                        detail = exc.detail
+                        if not (
+                            isinstance(detail, dict)
+                            and isinstance(detail.get("ErrorCode"), str)
+                            and isinstance(detail.get("ErrorMessage"), str)
+                            and detail["ErrorMessage"]
+                            and 400 <= exc.status_code < 600
+                        ):
+                            raise AssertionError(
+                                "Некорректный формат исключения"
+                            ) from exc
+
+                        return {
+                            "success": False,
+                            "status_code": exc.status_code,
+                            "message": detail["ErrorMessage"],
+                        }
+
+                return call
+
+        for name in (
+            "file_service",
+            "module_service",
+            "launch_service",
+            "section_service",
+            "note_service",
+            "material_service",
+        ):
+            setattr(
+                self,
+                name,
+                ServiceErrorAdapter(getattr(self, name)),
+            )
         self.module = self.modules.create_module(1, {'title': 'Module', 'description': ''})
         self.other_module = self.modules.create_module(2, {'title': 'Other', 'description': ''})
         self.run = self.launches.create_launch(self.module['id'], self.run_data('2026'))
