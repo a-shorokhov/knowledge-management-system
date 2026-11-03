@@ -30,7 +30,7 @@ database.engine = engine
 database.get_db = lambda: None
 sys.modules['core.database'] = database
 config = types.ModuleType('core.config')
-config.settings = types.SimpleNamespace(S3_BUCKET='fake-test-bucket', SECRET_KEY=SecretStr('test-secret-key-that-is-only-used-in-tests'), TOKEN_ALGORITHM='HS256', TOKEN_LIFETIME_MINUTES=30)
+config.settings = types.SimpleNamespace(S3_BUCKET='fake-test-bucket', SECRET_KEY=SecretStr('test-secret-key-that-is-only-used-in-tests'), TOKEN_ALGORITHM='HS256', TOKEN_LIFETIME_MINUTES=30, CORS_ORIGINS=[])
 sys.modules['core.config'] = config
 
 import models
