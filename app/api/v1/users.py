@@ -93,4 +93,4 @@ def delete_user(
     if result["success"]:
         return result
 
-    raise HTTPException(status_code=404, detail=result["message"])
+    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])

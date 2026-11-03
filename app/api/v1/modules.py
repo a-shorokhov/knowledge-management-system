@@ -14,12 +14,12 @@ def create_module(
     service: ModuleService = Depends(),
     current_user: dict = Depends(get_current_user),
 ):
-    module = service.create_module(current_user["id"], data)
+    result = service.create_module(current_user["id"], data)
 
-    if module["success"]:
-        return module
+    if result["success"]:
+        return result
 
-    raise HTTPException(status_code=module.get("status_code", 404), detail=module["message"])
+    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
 
 
 @router.get("/modules", response_model=dict[int, ModuleResponse])
@@ -27,7 +27,12 @@ def get_modules(
     service: ModuleService = Depends(),
     current_user: dict = Depends(get_current_user),
 ):
-    return service.get_all_modules(current_user["id"])
+    result = service.get_all_modules(current_user["id"])
+
+    if result["success"]:
+        return result["data"]
+
+    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
 
 
 @router.get("/modules/{module_id}", response_model=ModuleResponse)
@@ -36,12 +41,12 @@ def get_module_by_id(
     service: ModuleService = Depends(),
     current_user: dict = Depends(get_current_user),
 ):
-    module = service.get_module_by_id(module_id, current_user["id"])
+    result = service.get_module_by_id(module_id, current_user["id"])
 
-    if module["success"]:
-        return module
+    if result["success"]:
+        return result
 
-    raise HTTPException(status_code=module.get("status_code", 404), detail=module["message"])
+    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
 
 
 @router.patch("/modules/{module_id}", response_model=ModuleResponse)
@@ -51,12 +56,12 @@ def update_module(
     service: ModuleService = Depends(),
     current_user: dict = Depends(get_current_user),
 ):
-    module = service.edit_module(module_id, current_user["id"], data)
+    result = service.edit_module(module_id, current_user["id"], data)
 
-    if module["success"]:
-        return module
+    if result["success"]:
+        return result
 
-    raise HTTPException(status_code=module.get("status_code", 404), detail=module["message"])
+    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
 
 
 @router.delete("/modules/{module_id}")

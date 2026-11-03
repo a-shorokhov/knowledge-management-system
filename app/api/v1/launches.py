@@ -15,12 +15,12 @@ def create_launch(
     service: LaunchService = Depends(),
     current_user: dict = Depends(get_current_user),
 ):
-    launch = service.create_launch(module_id, current_user["id"], data)
+    result = service.create_launch(module_id, current_user["id"], data)
 
-    if launch["success"]:
-        return launch
+    if result["success"]:
+        return result
 
-    raise HTTPException(status_code=launch.get("status_code", 404), detail=launch["message"])
+    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
 
 
 @router.get("/modules/{module_id}/launches", response_model=dict[int, LaunchResponse])
@@ -43,12 +43,12 @@ def get_launch_by_id(
     service: LaunchService = Depends(),
     current_user: dict = Depends(get_current_user),
 ):
-    launch = service.get_launch_by_id(launch_id, current_user["id"])
+    result = service.get_launch_by_id(launch_id, current_user["id"])
 
-    if launch["success"]:
-        return launch
+    if result["success"]:
+        return result
 
-    raise HTTPException(status_code=launch.get("status_code", 404), detail=launch["message"])
+    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
 
 
 @router.patch("/launches/{launch_id}", response_model=LaunchResponse)
@@ -58,12 +58,12 @@ def update_launch(
     service: LaunchService = Depends(),
     current_user: dict = Depends(get_current_user),
 ):
-    launch = service.edit_launch(launch_id, current_user["id"], data)
+    result = service.edit_launch(launch_id, current_user["id"], data)
 
-    if launch["success"]:
-        return launch
+    if result["success"]:
+        return result
 
-    raise HTTPException(status_code=launch.get("status_code", 404), detail=launch["message"])
+    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
 
 
 @router.delete("/launches/{launch_id}")
@@ -73,6 +73,21 @@ def delete_launch(
     current_user: dict = Depends(get_current_user),
 ):
     result = service.delete_launch(launch_id, current_user["id"])
+
+    if result["success"]:
+        return result
+
+    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+
+
+@router.post("/launches/{launch_id}/copy", status_code=201, response_model=LaunchResponse)
+def copy_launch(
+    launch_id: int,
+    data: CreateLaunchRequest,
+    service: LaunchService = Depends(),
+    current_user: dict = Depends(get_current_user),
+):
+    result = service.copy_launch(launch_id, current_user["id"], data)
 
     if result["success"]:
         return result
