@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, UniqueConstraint
 
 from core.database import Base
 
@@ -12,5 +12,5 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     username = Column(String(32), nullable=False)
-    email = Column(String, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    email = Column(String(320), nullable=False)
+    hashed_password = Column(Text, nullable=False)

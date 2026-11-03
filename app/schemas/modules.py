@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -5,30 +7,27 @@ class CreateModuleRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(min_length=1, max_length=255)
-    description: str | None = None
+    description: str
 
 
 class UpdateModuleRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    title: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=255,
-    )
+    title: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
 
-    @field_validator("title")
+    @field_validator("title", "description")
     @classmethod
-    def title_cannot_be_null(cls, value):
+    def fields_cannot_be_null(cls, value):
         if value is None:
-            raise ValueError("Название модуля не может быть пустым")
-
+            raise ValueError("Поле не может быть пустым")
         return value
 
 
 class ModuleResponse(BaseModel):
     id: int
-    user_id: int
+    owner_id: int
     title: str
-    description: str | None
+    description: str
+    created_at: datetime
+    updated_at: datetime

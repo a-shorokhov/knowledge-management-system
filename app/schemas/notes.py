@@ -8,6 +8,8 @@ class CreateNoteRequest(BaseModel):
 
     title: str = Field(min_length=1, max_length=255)
     content: str = Field(min_length=1)
+    material_id: int | None = Field(default=None, ge=1)
+    section_id: int | None = Field(default=None, ge=1)
 
 
 class UpdateNoteRequest(BaseModel):
@@ -15,19 +17,24 @@ class UpdateNoteRequest(BaseModel):
 
     title: str | None = Field(default=None, min_length=1, max_length=255)
     content: str | None = Field(default=None, min_length=1)
+    material_id: int | None = Field(default=None, ge=1)
+    section_id: int | None = Field(default=None, ge=1)
 
     @field_validator("title", "content")
     @classmethod
     def fields_cannot_be_null(cls, value):
         if value is None:
             raise ValueError("Заметка не может быть пустой")
-
         return value
 
 
 class NoteResponse(BaseModel):
     id: int
     launch_id: int
+    material_id: int | None
+    section_id: int | None
+    author_id: int
     title: str
     content: str
     created_at: datetime
+    updated_at: datetime

@@ -5,15 +5,12 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-import models
-
-from api.v1 import users_router, modules_router, launches_router, notes_router, materials_router
-from core.database import Base, engine
+from api.v1 import users_router, modules_router, launches_router, sections_router, notes_router, materials_router, stored_files_router
+from core.database import engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
     try:
         yield
     finally:
@@ -38,3 +35,5 @@ app.include_router(modules_router)
 app.include_router(launches_router)
 app.include_router(notes_router)
 app.include_router(materials_router)
+app.include_router(sections_router)
+app.include_router(stored_files_router)

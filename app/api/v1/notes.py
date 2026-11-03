@@ -15,12 +15,12 @@ def create_note(
     service: NoteService = Depends(),
     current_user: dict = Depends(get_current_user),
 ):
-    note = service.create_note(launch_id, current_user["id"], data)
+    result = service.create_note(launch_id, current_user["id"], data)
 
-    if note["success"]:
-        return note
+    if result["success"]:
+        return result
 
-    raise HTTPException(status_code=note.get("status_code", 404), detail=note["message"])
+    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
 
 
 @router.get("/launches/{launch_id}/notes", response_model=dict[int, NoteResponse])
@@ -43,12 +43,12 @@ def get_note_by_id(
     service: NoteService = Depends(),
     current_user: dict = Depends(get_current_user),
 ):
-    note = service.get_note_by_id(note_id, current_user["id"])
+    result = service.get_note_by_id(note_id, current_user["id"])
 
-    if note["success"]:
-        return note
+    if result["success"]:
+        return result
 
-    raise HTTPException(status_code=note.get("status_code", 404), detail=note["message"])
+    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
 
 
 @router.patch("/notes/{note_id}", response_model=NoteResponse)
@@ -58,12 +58,12 @@ def update_note(
     service: NoteService = Depends(),
     current_user: dict = Depends(get_current_user),
 ):
-    note = service.edit_note(note_id, current_user["id"], data)
+    result = service.edit_note(note_id, current_user["id"], data)
 
-    if note["success"]:
-        return note
+    if result["success"]:
+        return result
 
-    raise HTTPException(status_code=note.get("status_code", 404), detail=note["message"])
+    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
 
 
 @router.delete("/notes/{note_id}")

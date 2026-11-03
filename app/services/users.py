@@ -1,4 +1,5 @@
 from fastapi import Depends
+from sqlalchemy.exc import IntegrityError
 
 from core.security import hash_password, verify_password, create_access_token
 
@@ -136,7 +137,10 @@ class UserService:
                 "message": "Пользователь не найден",
             }
 
-        self.repository.delete_user(user_id)
+        try:
+            self.repository.delete_user(user_id)
+        except IntegrityError:
+            return {"success": False, "message": "Сначала удалите модули и файлы пользователя", "status_code": 409}
 
         return {
             "success": True,
