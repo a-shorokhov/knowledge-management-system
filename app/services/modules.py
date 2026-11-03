@@ -1,6 +1,12 @@
 from fastapi import Depends
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from core.exceptions import (
+    ContentDeletionFailedException,
+    FileCleanupFailedException,
+    ModuleNotFoundException,
+    RelatedDataChangedException,
+)
 from repositories.modules import ModuleRepository
 from services.stored_files import StoredFileService
 from schemas.modules import CreateModuleRequest, UpdateModuleRequest
@@ -15,7 +21,7 @@ class ModuleService:
         try:
             module = self.repository.create_module(user_id, data.model_dump())
         except IntegrityError:
-            return {"success": False, "message": "Связанные данные изменились, повторите запрос", "status_code": 409}
+            raise RelatedDataChangedException()
 
         return {"success": True, **module}
 
@@ -25,7 +31,7 @@ class ModuleService:
     def get_module_by_id(self, module_id: int, user_id: int):
         module = self.repository.get_module_by_id(module_id, user_id)
         if module is None:
-            return {"success": False, "message": "Модуль не найден"}
+            raise ModuleNotFoundException()
 
         return {"success": True, **module}
 
@@ -33,10 +39,10 @@ class ModuleService:
         try:
             module = self.repository.edit_module(module_id, user_id, data.model_dump(exclude_unset=True))
         except IntegrityError:
-            return {"success": False, "message": "Связанные данные изменились, повторите запрос", "status_code": 409}
+            raise RelatedDataChangedException()
 
         if module is None:
-            return {"success": False, "message": "Модуль не найден"}
+            raise ModuleNotFoundException()
 
         return {"success": True, **module}
 
@@ -44,15 +50,19 @@ class ModuleService:
         try:
             file_ids = self.repository.delete_module(module_id, user_id)
         except IntegrityError:
-            return {"success": False, "message": "Связанные данные изменились, повторите запрос", "status_code": 409}
+            raise RelatedDataChangedException()
         except SQLAlchemyError:
-            return {"success": False, "message": "Не удалось удалить содержимое из базы данных", "status_code": 503}
+            raise ContentDeletionFailedException()
 
         if file_ids is None:
-            return {"success": False, "message": "Модуль не найден"}
+            raise ModuleNotFoundException()
 
-        cleanup = self.files.delete_unused_files(file_ids, user_id)
-        if not cleanup["success"]:
-            return {**cleanup, "message": "Модуль и его содержимое удалены. " + cleanup["message"]}
+        try:
+            self.files.delete_unused_files(file_ids, user_id)
+        except FileCleanupFailedException as exc:
+            raise FileCleanupFailedException(
+                exc.detail["ErrorContext"]["file_ids"],
+                prefix="Модуль и его содержимое удалены. ",
+            ) from None
 
         return {"success": True, "message": "Модуль и его содержимое удалены"}

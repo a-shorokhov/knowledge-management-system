@@ -3,10 +3,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.v1 import users_router, modules_router, launches_router, sections_router, notes_router, materials_router, stored_files_router
 from core.database import engine
+from core.config import settings
+from core.handlers import register_exception_handlers
 
 
 @asynccontextmanager
@@ -18,6 +21,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["Content-Type", "Authorization"],
+    allow_credentials=False,
+)
+register_exception_handlers(app)
 
 
 @app.exception_handler(RequestValidationError)

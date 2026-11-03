@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from core.depends import get_current_user
 from schemas.notes import CreateNoteRequest, UpdateNoteRequest, NoteResponse
@@ -17,10 +17,7 @@ def create_note(
 ):
     result = service.create_note(launch_id, current_user["id"], data)
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.get("/launches/{launch_id}/notes", response_model=dict[int, NoteResponse])
@@ -31,10 +28,7 @@ def get_notes(
 ):
     result = service.get_all_notes(launch_id, current_user["id"])
 
-    if result["success"]:
-        return result["data"]
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result["data"]
 
 
 @router.get("/notes/{note_id}", response_model=NoteResponse)
@@ -45,10 +39,7 @@ def get_note_by_id(
 ):
     result = service.get_note_by_id(note_id, current_user["id"])
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.patch("/notes/{note_id}", response_model=NoteResponse)
@@ -60,10 +51,7 @@ def update_note(
 ):
     result = service.edit_note(note_id, current_user["id"], data)
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.delete("/notes/{note_id}")
@@ -74,7 +62,4 @@ def delete_note(
 ):
     result = service.delete_note(note_id, current_user["id"])
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from core.depends import get_current_user
 from schemas.modules import CreateModuleRequest, UpdateModuleRequest, ModuleResponse
@@ -16,10 +16,7 @@ def create_module(
 ):
     result = service.create_module(current_user["id"], data)
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.get("/modules", response_model=dict[int, ModuleResponse])
@@ -29,10 +26,7 @@ def get_modules(
 ):
     result = service.get_all_modules(current_user["id"])
 
-    if result["success"]:
-        return result["data"]
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result["data"]
 
 
 @router.get("/modules/{module_id}", response_model=ModuleResponse)
@@ -43,10 +37,7 @@ def get_module_by_id(
 ):
     result = service.get_module_by_id(module_id, current_user["id"])
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.patch("/modules/{module_id}", response_model=ModuleResponse)
@@ -58,10 +49,7 @@ def update_module(
 ):
     result = service.edit_module(module_id, current_user["id"], data)
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.delete("/modules/{module_id}")
@@ -72,7 +60,4 @@ def delete_module(
 ):
     result = service.delete_module(module_id, current_user["id"])
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result

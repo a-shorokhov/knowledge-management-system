@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from core.depends import get_current_user, require_user_owner
 
@@ -21,10 +21,7 @@ def create_user(
 ):
     user = service.create_user(raw_user)
 
-    if user["success"]:
-        return user
-
-    raise HTTPException(status_code=400, detail=user["message"])
+    return user
 
 @router.post("/auth/login", response_model=Token)
 def login(
@@ -36,10 +33,7 @@ def login(
         form_data.password,
     )
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=401, detail=result["message"], headers={"WWW-Authenticate": "Bearer"})
+    return result
 
 @router.get("/auth/me", response_model=UserResponse)
 def me(current_user: dict = Depends(get_current_user)):
@@ -61,10 +55,7 @@ def get_user_by_id(
 ):
     user = service.get_user_by_id(user_id)
 
-    if user["success"]:
-        return user
-
-    raise HTTPException(status_code=404, detail=user["message"])
+    return user
 
 
 @router.patch("/users/{user_id}", response_model=UserResponse)
@@ -76,10 +67,7 @@ def update_user(
 ):
     user = service.edit_user(user_id, upd_data)
 
-    if user["success"]:
-        return user
-
-    raise HTTPException(status_code=user.get("status_code", 404), detail=user["message"])
+    return user
 
 
 @router.delete("/users/{user_id}")
@@ -90,7 +78,4 @@ def delete_user(
 ):
     result = service.delete_user(user_id)
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
