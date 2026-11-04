@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     TOKEN_LIFETIME_MINUTES: int = Field(default=30, gt=0)
     TOKEN_ALGORITHM: Literal["HS256"] = "HS256"
 
+    CORS_ORIGINS: list[str] = Field(default_factory=list)
+
     S3_ENDPOINT: str = "https://storage.yandexcloud.net"
     S3_ACCESS_KEY: str
     S3_SECRET_KEY: SecretStr

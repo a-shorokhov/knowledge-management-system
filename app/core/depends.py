@@ -1,24 +1,29 @@
 import jwt
-from fastapi import Depends, HTTPException
+from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 
 from core.config import settings
+from core.exceptions import (
+    AccountAccessDeniedException,
+    AuthenticationRequiredException,
+    InvalidTokenException,
+)
 from repositories.users import UserRepository
 
 from adapters.file_storage.s3 import S3FileStorageAdapter
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="auth/login",
+    auto_error=False,
+)
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: str | None = Depends(oauth2_scheme),
     repository: UserRepository = Depends(),
 ):
-    credentials_error = HTTPException(
-        status_code=401,
-        detail="Недействительный токен",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    if not token:
+        raise AuthenticationRequiredException()
 
     try:
         payload = jwt.decode(
@@ -32,15 +37,15 @@ def get_current_user(
         user_id = payload["user_id"]
 
         if not isinstance(username, str) or type(user_id) is not int:
-            raise credentials_error
+            raise InvalidTokenException()
 
     except jwt.InvalidTokenError:
-        raise credentials_error from None
+        raise InvalidTokenException() from None
 
     user = repository.get_user_by_username(username)
 
     if user is None or user["id"] != user_id:
-        raise credentials_error
+        raise InvalidTokenException()
 
     return user
 
@@ -50,10 +55,7 @@ def require_user_owner(
     current_user: dict = Depends(get_current_user),
 ):
     if user_id != current_user["id"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Нет доступа к чужому аккаунту",
-        )
+        raise AccountAccessDeniedException()
 
     return current_user
 

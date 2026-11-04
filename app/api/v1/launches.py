@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from core.depends import get_current_user
 from schemas.launches import CreateLaunchRequest, UpdateLaunchRequest, LaunchResponse
@@ -17,10 +17,7 @@ def create_launch(
 ):
     result = service.create_launch(module_id, current_user["id"], data)
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.get("/modules/{module_id}/launches", response_model=dict[int, LaunchResponse])
@@ -31,10 +28,7 @@ def get_launches(
 ):
     result = service.get_all_launches(module_id, current_user["id"])
 
-    if result["success"]:
-        return result["data"]
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result["data"]
 
 
 @router.get("/launches/{launch_id}", response_model=LaunchResponse)
@@ -45,10 +39,7 @@ def get_launch_by_id(
 ):
     result = service.get_launch_by_id(launch_id, current_user["id"])
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.patch("/launches/{launch_id}", response_model=LaunchResponse)
@@ -60,10 +51,7 @@ def update_launch(
 ):
     result = service.edit_launch(launch_id, current_user["id"], data)
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.delete("/launches/{launch_id}")
@@ -74,10 +62,7 @@ def delete_launch(
 ):
     result = service.delete_launch(launch_id, current_user["id"])
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.post("/launches/{launch_id}/copy", status_code=201, response_model=LaunchResponse)
@@ -89,7 +74,4 @@ def copy_launch(
 ):
     result = service.copy_launch(launch_id, current_user["id"], data)
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result

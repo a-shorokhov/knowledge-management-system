@@ -1,6 +1,13 @@
 from fastapi import Depends
 from sqlalchemy.exc import IntegrityError
 
+from core.exceptions import (
+    EmailAlreadyExistsException,
+    IncorrectCredentialsException,
+    UserAlreadyExistsException,
+    UserHasContentException,
+    UserNotFoundException,
+)
 from core.security import hash_password, verify_password, create_access_token
 
 from repositories.users import EmailAlreadyExistsError, UserAlreadyExistsError, UserRepository
@@ -13,10 +20,7 @@ class UserService:
 
     def create_user(self, raw_user: CreateUserRequest):
         if self.repository.get_user_by_username(raw_user.username):
-            return {
-                "success": False,
-                "message": "Пользователь уже существует",
-            }
+            raise UserAlreadyExistsException()
 
         try:
             user = self.repository.create_user(
@@ -25,16 +29,9 @@ class UserService:
                 hash_password(raw_user.password),
             )
         except EmailAlreadyExistsError:
-            return {
-                "success": False,
-                "message": "Email уже используется",
-                "status_code": 400,
-            }
+            raise EmailAlreadyExistsException()
         except UserAlreadyExistsError:
-            return {
-                "success": False,
-                "message": "Пользователь уже существует",
-            }
+            raise UserAlreadyExistsException()
 
         return {
             "success": True,
@@ -50,10 +47,7 @@ class UserService:
                 password,
                 user.hashed_password,
         ):
-            return {
-                "success": False,
-                "message": "Неверный логин или пароль",
-            }
+            raise IncorrectCredentialsException()
 
         token = create_access_token(
             {
@@ -75,10 +69,7 @@ class UserService:
         user = self.repository.get_user_by_id(user_id)
 
         if user is None:
-            return {
-                "success": False,
-                "message": "Пользователь не найден",
-            }
+            raise UserNotFoundException()
 
         return {
             "success": True,
@@ -91,10 +82,7 @@ class UserService:
         user = self.repository.get_user_by_id(user_id)
 
         if user is None:
-            return {
-                "success": False,
-                "message": "Пользователь не найден",
-            }
+            raise UserNotFoundException()
 
         upd_data = upd_data.model_dump()
         clear_dict = {}
@@ -109,17 +97,10 @@ class UserService:
         try:
             user = self.repository.edit_user(user_id, clear_dict)
         except EmailAlreadyExistsError:
-            return {
-                "success": False,
-                "message": "Email уже используется",
-                "status_code": 400,
-            }
+            raise EmailAlreadyExistsException()
 
         if user is None:
-            return {
-                "success": False,
-                "message": "Пользователь не найден",
-            }
+            raise UserNotFoundException()
 
         return {
             "success": True,
@@ -132,15 +113,12 @@ class UserService:
         user = self.repository.get_user_by_id(user_id)
 
         if user is None:
-            return {
-                "success": False,
-                "message": "Пользователь не найден",
-            }
+            raise UserNotFoundException()
 
         try:
             self.repository.delete_user(user_id)
         except IntegrityError:
-            return {"success": False, "message": "Сначала удалите модули и файлы пользователя", "status_code": 409}
+            raise UserHasContentException()
 
         return {
             "success": True,

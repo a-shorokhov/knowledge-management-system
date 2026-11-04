@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from core.depends import get_current_user
 from models.enums import MaterialKind
@@ -26,10 +26,7 @@ def create_material(
     upload = MaterialUpload(file.file, file.filename, file.content_type, file.size)
     result = service.create_material(launch_id, current_user["id"], title, description, upload, section_id, kind, position)
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.get("/launches/{launch_id}/materials", response_model=dict[int, MaterialResponse])
@@ -40,10 +37,7 @@ def get_materials(
 ):
     result = service.get_all_materials(launch_id, current_user["id"])
 
-    if result["success"]:
-        return result["data"]
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result["data"]
 
 
 @router.get("/materials/{material_id}", response_model=MaterialResponse)
@@ -54,10 +48,7 @@ def get_material_by_id(
 ):
     result = service.get_material_by_id(material_id, current_user["id"])
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.patch("/materials/{material_id}", response_model=MaterialResponse)
@@ -69,10 +60,7 @@ def update_material(
 ):
     result = service.edit_material(material_id, current_user["id"], data)
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.post("/materials/{material_id}/copy", status_code=201, response_model=MaterialResponse)
@@ -84,10 +72,7 @@ def copy_material(
 ):
     result = service.copy_material(material_id, current_user["id"], data)
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.put("/materials/{material_id}/file", response_model=MaterialResponse)
@@ -100,10 +85,7 @@ def replace_file(
     upload = MaterialUpload(file.file, file.filename, file.content_type, file.size)
     result = service.replace_file(material_id, current_user["id"], upload)
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.get("/materials/{material_id}/download", response_model=DownloadResponse)
@@ -114,10 +96,7 @@ def download_material(
 ):
     result = service.get_material_download_url(material_id, current_user["id"])
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.delete("/materials/{material_id}")
@@ -128,7 +107,4 @@ def delete_material(
 ):
     result = service.delete_material(material_id, current_user["id"])
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result

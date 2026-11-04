@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from core.depends import get_current_user
 from schemas.stored_files import DownloadResponse, StoredFileResponse
@@ -15,10 +15,7 @@ def get_files(
 ):
     result = service.get_all_files(current_user["id"])
 
-    if result["success"]:
-        return result["data"]
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result["data"]
 
 
 @router.get("/stored-files/{file_id}", response_model=StoredFileResponse)
@@ -29,10 +26,7 @@ def get_file_by_id(
 ):
     result = service.get_file_by_id(file_id, current_user["id"])
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.get("/stored-files/{file_id}/download", response_model=DownloadResponse)
@@ -43,10 +37,7 @@ def download_file(
 ):
     result = service.get_download_url(file_id, current_user["id"])
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
 
 
 @router.delete("/stored-files/{file_id}")
@@ -57,7 +48,4 @@ def delete_file(
 ):
     result = service.delete_file(file_id, current_user["id"])
 
-    if result["success"]:
-        return result
-
-    raise HTTPException(status_code=result.get("status_code", 404), detail=result["message"])
+    return result
