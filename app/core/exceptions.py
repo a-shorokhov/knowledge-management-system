@@ -8,6 +8,7 @@ class ErrorCode(str, Enum):
     EMAIL_ALREADY_EXISTS = "EMAIL_ALREADY_EXISTS"
     INCORRECT_CREDENTIALS = "INCORRECT_CREDENTIALS"
     INVALID_TOKEN = "INVALID_TOKEN"
+    AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
     ACCOUNT_ACCESS_DENIED = "ACCOUNT_ACCESS_DENIED"
     USER_NOT_FOUND = "USER_NOT_FOUND"
     USER_HAS_CONTENT = "USER_HAS_CONTENT"
@@ -105,6 +106,16 @@ class InvalidTokenException(AppException):
             status_code=401,
             error_code=ErrorCode.INVALID_TOKEN,
             message="Недействительный токен",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+class AuthenticationRequiredException(AppException):
+    def __init__(self):
+        super().__init__(
+            status_code=401,
+            error_code=ErrorCode.AUTHENTICATION_REQUIRED,
+            message="Требуется авторизация",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
