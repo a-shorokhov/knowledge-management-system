@@ -93,12 +93,18 @@ class APIErrorTests(HTTPTestCase):
             403, 'ACCOUNT_ACCESS_DENIED', 'Нет доступа к чужому аккаунту',
         )
 
-    def test_missing_token_keeps_standard_401_and_bearer_header(self):
+    def test_missing_token_returns_typed_401_and_bearer_header(self):
         del self.app.dependency_overrides[runtime.get_current_user]
-        status, headers, body = self.request('GET', '/auth/me')
-        self.assertEqual(status, 401)
-        self.assertEqual(headers['www-authenticate'], 'Bearer')
-        self.assertEqual(body, {'detail': 'Not authenticated'})
+
+        response = self.request('GET', '/auth/me')
+
+        self.assert_error(
+            response,
+            401,
+            'AUTHENTICATION_REQUIRED',
+            'Требуется авторизация',
+        )
+        self.assertEqual(response[1]['www-authenticate'], 'Bearer')
 
     def test_invalid_token_returns_typed_401_and_bearer_header(self):
         del self.app.dependency_overrides[runtime.get_current_user]
