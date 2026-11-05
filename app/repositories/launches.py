@@ -5,11 +5,16 @@ from sqlalchemy.orm import Session
 
 from core.database import get_db
 from models.launches import Launch
+from models.launch_designs import LaunchDesign
 from models.modules import Module
 from models.sections import RunSection
 from models.materials import Material
 from repositories.stored_files import FileUnavailableError, StoredFileRepository
 from repositories.transactions import transaction
+
+
+class InvalidLaunchDatesError(ValueError):
+    pass
 
 
 def lock_launches(db: Session, launch_ids: list[int]):
@@ -37,6 +42,11 @@ class LaunchRepository:
             "semester": launch.semester,
             "status": launch.status,
             "copied_from_launch_id": launch.copied_from_launch_id,
+            "starts_on": launch.starts_on,
+            "ends_on": launch.ends_on,
+            "participant_count": launch.participant_count,
+            "changes_summary": launch.changes_summary,
+            "changes_reason": launch.changes_reason,
             "created_at": launch.created_at,
             "updated_at": launch.updated_at,
         }
@@ -53,6 +63,8 @@ class LaunchRepository:
 
         try:
             self.db.add(launch)
+            self.db.flush()
+            self.db.add(LaunchDesign(launch_id=launch.id))
             self.db.flush()
             self.db.refresh(launch)
             result = self._to_dict(launch)
@@ -81,19 +93,25 @@ class LaunchRepository:
         return self._to_dict(launch) if launch is not None else None
 
     def edit_launch(self, launch_id: int, user_id: int, data: dict):
-        launch = self._get_owned_launch(launch_id, user_id)
-
-        if launch is None:
-            return None
-
         try:
+            launch = self.db.scalar(
+                select(Launch).join(Module, Launch.module_id == Module.id)
+                .where(Launch.id == launch_id, Module.owner_id == user_id)
+                .with_for_update(of=Launch).execution_options(populate_existing=True)
+            )
+            if launch is None:
+                return None
+            starts_on = data.get("starts_on", launch.starts_on)
+            ends_on = data.get("ends_on", launch.ends_on)
+            if starts_on is not None and ends_on is not None and ends_on < starts_on:
+                raise InvalidLaunchDatesError()
             for key, value in data.items():
                 setattr(launch, key, value)
             self.db.flush()
             self.db.refresh(launch)
             result = self._to_dict(launch)
             self.db.commit()
-        except SQLAlchemyError:
+        except (SQLAlchemyError, InvalidLaunchDatesError):
             self.db.rollback()
             raise
 

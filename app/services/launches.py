@@ -3,13 +3,14 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from core.exceptions import (
     ContentDeletionFailedException,
+    InvalidLaunchDatesException,
     FileCleanupFailedException,
     FileUnavailableForCopyException,
     LaunchNotFoundException,
     ModuleNotFoundException,
     RelatedDataChangedException,
 )
-from repositories.launches import LaunchRepository
+from repositories.launches import InvalidLaunchDatesError, LaunchRepository
 from repositories.modules import ModuleRepository
 from repositories.stored_files import FileUnavailableError
 from services.stored_files import StoredFileService
@@ -54,6 +55,8 @@ class LaunchService:
     def edit_launch(self, launch_id: int, user_id: int, data: UpdateLaunchRequest):
         try:
             launch = self.repository.edit_launch(launch_id, user_id, data.model_dump(exclude_unset=True))
+        except InvalidLaunchDatesError:
+            raise InvalidLaunchDatesException() from None
         except IntegrityError:
             raise RelatedDataChangedException()
 

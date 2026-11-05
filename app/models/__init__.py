@@ -5,3 +5,5 @@ from .sections import RunSection
 from .stored_files import StoredFile
 from .materials import Material
 from .notes import Note
+
+from .launch_designs import LaunchDesign

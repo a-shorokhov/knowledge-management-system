@@ -5,3 +5,5 @@ from api.v1.sections import router as sections_router
 from api.v1.notes import router as notes_router
 from api.v1.materials import router as materials_router
 from api.v1.stored_files import router as stored_files_router
+
+from api.v1.launch_designs import router as launch_designs_router

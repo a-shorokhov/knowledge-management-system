@@ -27,15 +27,17 @@ def migration_config(connection=None):
 
 
 class MigrationConfigurationTests(unittest.TestCase):
-    def test_single_revision_is_frozen_and_matches_models(self):
+    def test_revision_chain_preserves_initial_schema(self):
         scripts = ScriptDirectory.from_config(migration_config())
-        self.assertEqual(scripts.get_heads(), ['0001_initial'])
-        revision = scripts.get_revision('head')
-        frozen = revision.module._schema()
+        self.assertEqual(scripts.get_heads(), ['0002_launch_designs'])
+        self.assertEqual([revision.revision for revision in scripts.walk_revisions()], ['0002_launch_designs', '0001_initial'])
+        initial = scripts.get_revision('0001_initial').module._schema()
         actual = test_runtime.database.Base.metadata
-        self.assertEqual(set(frozen.tables), set(actual.tables))
-        for name, table in actual.tables.items():
-            self.assertEqual(set(frozen.tables[name].columns.keys()), set(table.columns.keys()))
+        self.assertEqual(set(actual.tables), set(initial.tables) | {'launch_designs'})
+        added_columns = {'starts_on', 'ends_on', 'participant_count', 'changes_summary', 'changes_reason'}
+        for name, table in initial.tables.items():
+            expected = set(table.columns.keys()) | (added_columns if name == 'launches' else set())
+            self.assertEqual(set(actual.tables[name].columns.keys()), expected)
 
     def test_start_runs_migrations_before_server_and_stops_on_failure(self):
         spec = importlib.util.spec_from_file_location('kms_start', ROOT / 'app' / 'start.py')
@@ -79,7 +81,7 @@ class PostgreSQLMigrationTests(unittest.TestCase):
     def assert_current(self):
         self.connection.commit()
         command.check(migration_config(self.connection))
-        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0001_initial')
+        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0002_launch_designs')
 
     def legacy_data(self):
         statements = [
@@ -122,8 +124,65 @@ class PostgreSQLMigrationTests(unittest.TestCase):
         self.upgrade()
         self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM stored_files')), 1)
 
+    def test_design_migration_backfills_existing_launches_without_changing_data(self):
+        self.legacy_data()
+        command.upgrade(migration_config(self.connection), '0001_initial')
+        before = self.connection.execute(sa.text('SELECT id,title,description,year,semester,status,created_at,updated_at FROM launches')).all()
+        self.connection.commit()
+        self.upgrade()
+        after = self.connection.execute(sa.text('SELECT id,title,description,year,semester,status,created_at,updated_at FROM launches')).all()
+        self.assertEqual(before, after)
+        design = self.connection.execute(sa.text('SELECT launch_id,template_version,data,created_at,updated_at FROM launch_designs')).one()
+        self.assertEqual(tuple(design[:3]), (1, 1, {}))
+        self.assertIsNotNone(design.created_at)
+        self.assertIsNotNone(design.updated_at)
+        self.assertEqual(self.connection.scalar(sa.text('SELECT participant_count FROM launches WHERE id=1')), None)
+        self.assert_current()
+        self.upgrade()
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM launch_designs')), 1)
+
+    def test_design_jsonb_constraints_and_cascade(self):
+        self.legacy_data()
+        self.upgrade()
+        columns = {column['name']: column for column in sa.inspect(self.connection).get_columns('launch_designs')}
+        self.assertIsInstance(columns['data']['type'], sa.dialects.postgresql.JSONB)
+        invalid_updates = [
+            "UPDATE launch_designs SET data='[]'::jsonb",
+            "UPDATE launch_designs SET data='null'::jsonb",
+            "UPDATE launch_designs SET template_version=0",
+            "UPDATE launches SET participant_count=-1",
+            "UPDATE launches SET starts_on='2027-05-01', ends_on='2027-02-01'",
+        ]
+        for statement in invalid_updates:
+            with self.subTest(statement=statement):
+                with self.assertRaises(sa.exc.IntegrityError):
+                    with self.connection.begin_nested():
+                        self.connection.execute(sa.text(statement))
+        self.connection.execute(sa.text('DELETE FROM launches WHERE id=1'))
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM launch_designs')), 0)
+        self.connection.commit()
+
+    def test_postgresql_design_repository_roundtrip(self):
+        self.legacy_data()
+        self.upgrade()
+        from sqlalchemy.orm import Session
+        from repositories.launch_designs import LaunchDesignRepository
+        from repositories.launches import LaunchRepository
+        data = {'educational_concept': {'learning_outcomes': ['Third', 'First', 'Second']},
+                'project': {'stages': [{'position': 5}, {'position': 1}]}}
+        with Session(bind=self.connection) as session:
+            launch = LaunchRepository(session).create_launch(1, {'title': 'New', 'year': 2027, 'semester': 'Spring'})
+            repository = LaunchDesignRepository(session)
+            self.assertEqual(repository.get_design(launch['id'], 1)['data'], {})
+            repository.replace_design(launch['id'], 1, 1, data)
+            session.expire_all()
+            self.assertEqual(repository.get_design(launch['id'], 1)['data'], data)
+            repository.replace_design(launch['id'], 1, 1, {})
+            self.assertEqual(repository.get_design(launch['id'], 1)['data'], {})
+        self.assert_current()
+
     def test_existing_erd_gets_missing_columns_and_cascades(self):
-        test_runtime.database.Base.metadata.create_all(self.connection)
+        ScriptDirectory.from_config(migration_config()).get_revision('0001_initial').module._schema().create_all(self.connection)
         self.connection.execute(sa.text('ALTER TABLE notes DROP COLUMN section_id CASCADE'))
         self.connection.execute(sa.text('ALTER TABLE stored_files DROP COLUMN deletion_pending'))
         self.connection.execute(sa.text('ALTER TABLE launches DROP CONSTRAINT fk_launch_module'))
@@ -204,11 +263,11 @@ engine.dispose()
             shutil.copytree(ROOT / 'alembic', scripts)
             config = migration_config(self.connection)
             config.set_main_option('script_location', str(scripts))
-            revision = command.revision(config, message='Добавить необязательное поле', rev_id='0002_test')
+            revision = command.revision(config, message='Добавить необязательное поле', rev_id='0003_test')
             path = Path(revision.path)
             path.write_text(path.read_text().replace('def upgrade():\n    pass', "def upgrade():\n    op.add_column('users', sa.Column('nickname', sa.String(50), nullable=True))"))
             command.upgrade(config, 'head')
             command.upgrade(config, 'head')
         user = self.connection.execute(sa.text('SELECT username,hashed_password,nickname FROM users')).one()
         self.assertEqual(tuple(user), ('kept', 'kept-hash', None))
-        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0002_test')
+        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0003_test')
