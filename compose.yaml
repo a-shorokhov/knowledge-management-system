@@ -16,6 +16,9 @@ services:
       S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET in .env}
       S3_REGION: ${S3_REGION:-ru-central1}
       CORS_ORIGINS: '${CORS_ORIGINS:-[]}'
+      FILE_CLEANUP_DIR: /var/lib/kms/file-cleanup
+    volumes:
+      - file_cleanup_data:/var/lib/kms/file-cleanup
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     depends_on:
@@ -39,3 +42,4 @@ services:
 
 volumes:
   postgres_data:
+  file_cleanup_data:

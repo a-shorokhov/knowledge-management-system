@@ -92,11 +92,12 @@ class StoredFileService:
 
     def delete_file_if_unused(self, file_id: int, user_id: int):
         try:
-            stored_file = self.repository.get_file_by_id(file_id, user_id)
-            if stored_file is None or self.repository.is_file_used(file_id):
-                return {"success": True}
+            with self.repository.cleanup_attempt():
+                stored_file = self.repository.get_file_by_id(file_id, user_id)
+                if stored_file is None or self.repository.is_file_used(file_id):
+                    return {"success": True}
 
-            return self.delete_file(file_id, user_id)
+                return self.delete_file(file_id, user_id)
         except SQLAlchemyError:
             logger.exception("Ошибка проверки неиспользуемого файла")
             raise UnusedFileDeletionFailedException()

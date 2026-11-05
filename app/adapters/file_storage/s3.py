@@ -31,12 +31,17 @@ class S3FileStorageAdapter(FileStorageAdapter):
 
     def upload_file(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
         try:
-            self.client.put_object(
+            response = self.client.put_object(
                 Bucket=self.bucket_name,
                 Key=key,
                 Body=data,
                 ContentType=content_type,
             )
+            # A previous timed-out attempt can still finish after the successful
+            # retry. Keep the durable uncertain-upload job rather than declaring
+            # this key safe to forget after a future DELETE.
+            if response.get('ResponseMetadata', {}).get('RetryAttempts', 0):
+                raise FileStorageError("Результат повторной загрузки требует проверки")
         except (ClientError, BotoCoreError) as error:
             raise FileStorageError("Не удалось загрузить файл в хранилище") from error
 
@@ -64,5 +69,9 @@ class S3FileStorageAdapter(FileStorageAdapter):
     def delete_file(self, key: str) -> None:
         try:
             self.client.delete_object(Bucket=self.bucket_name, Key=key)
-        except (ClientError, BotoCoreError) as error:
+        except ClientError as error:
+            if error.response['Error']['Code'] in {'404', 'NoSuchKey', 'NotFound'}:
+                return
+            raise FileStorageError("Не удалось удалить файл из хранилища") from error
+        except BotoCoreError as error:
             raise FileStorageError("Не удалось удалить файл из хранилища") from error

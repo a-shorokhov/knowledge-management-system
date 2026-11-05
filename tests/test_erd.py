@@ -6,6 +6,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from pydantic import SecretStr, ValidationError
@@ -61,6 +62,8 @@ from schemas.materials import CopyMaterialRequest, MaterialUpload, UpdateMateria
 from schemas.notes import CreateNoteRequest, UpdateNoteRequest
 from adapters.file_storage.base import FileStorageError, StoredFileNotFound
 from core.depends import get_current_user, get_file_storage
+from core.depends import get_file_cleanup_journal
+from adapters.file_cleanup_journal import FileCleanupJournal
 from main import app
 
 logging.disable(logging.CRITICAL)
@@ -109,12 +112,16 @@ class ERDTests(unittest.TestCase):
         self.notes = NoteRepository(self.db)
         self.files = StoredFileRepository(self.db)
         self.storage = FakeStorage()
+        cleanup_directory = TemporaryDirectory(prefix='kms-cleanup-journal-')
+        self.cleanup_directory = cleanup_directory
+        self.addCleanup(cleanup_directory.cleanup)
+        self.journal = FileCleanupJournal(cleanup_directory.name)
         self.file_service = StoredFileService(self.files, self.materials, self.storage)
         self.module_service = ModuleService(self.modules, self.file_service)
         self.launch_service = LaunchService(self.launches, self.modules, self.file_service)
         self.section_service = SectionService(self.sections, self.launches, self.file_service)
         self.note_service = NoteService(self.notes, self.launches, self.materials, self.sections)
-        self.material_service = MaterialService(self.materials, self.launches, self.sections, self.storage, self.file_service, self.notes)
+        self.material_service = MaterialService(self.materials, self.launches, self.sections, self.storage, self.file_service, self.notes, self.journal)
                 # Поддержка старого и нового контрактов ошибок в тестах.
         from fastapi import HTTPException
 
@@ -172,12 +179,14 @@ class ERDTests(unittest.TestCase):
         app.dependency_overrides[database.get_db] = lambda: self.db
         app.dependency_overrides[get_current_user] = lambda: {'id': 1}
         app.dependency_overrides[get_file_storage] = lambda: self.storage
+        app.dependency_overrides[get_file_cleanup_journal] = lambda: self.journal
 
     def tearDown(self):
         app.dependency_overrides.clear()
         self.db.rollback()
         self.db.close()
         database.Base.metadata.drop_all(engine)
+        self.cleanup_directory.cleanup()
 
     @staticmethod
     def run_data(title):
@@ -362,9 +371,12 @@ class ERDTests(unittest.TestCase):
                 raise FileStorageError('fake first object failure')
             return original_delete(key)
         with patch.object(self.storage, 'delete_file', side_effect=fail_first):
-            result = self.launch_service.delete_launch(self.run['id'], 1)
-        self.assertEqual(result['status_code'], 503)
-        self.assertIn(str(first['stored_file_id']), result['message'])
+            status, result = self.request('DELETE', f"/launches/{self.run['id']}")
+        self.assertEqual(status, 503)
+        self.assertEqual(result['error']['ErrorCode'], 'FILE_CLEANUP_FAILED')
+        self.assertEqual(result['error']['ErrorContext'], {'file_ids': [first['stored_file_id']]})
+        self.assertIn('Запуск и его содержимое удалены', result['error']['ErrorMessage'])
+        self.assertFalse(self.db.in_transaction())
         self.assertIsNone(self.launches.get_launch_by_id(self.run['id'], 1))
         self.assertTrue(self.files.get_file_by_id(first['stored_file_id'], 1)['deletion_pending'])
         self.assertIsNone(self.files.get_file_by_id(second['stored_file_id'], 1))
@@ -500,10 +512,12 @@ class ERDTests(unittest.TestCase):
 
     def test_auto_cleanup_db_failure_preserves_record_for_retry(self):
         material = self.material()
+        app.dependency_overrides[StoredFileRepository] = lambda: self.files
         with patch.object(self.files, 'delete_file', side_effect=SQLAlchemyError('fake cleanup failure')):
-            result = self.material_service.delete_material(material['id'], 1)
-        self.assertEqual(result['status_code'], 503)
-        self.assertIn('Материал удалён', result['message'])
+            status, result = self.request('DELETE', f"/materials/{material['id']}")
+        self.assertEqual(status, 503)
+        self.assertIn('Материал удалён', result['error']['ErrorMessage'])
+        self.assertFalse(self.db.in_transaction())
         self.assertIsNone(self.materials.get_material_by_id(material['id'], 1))
         self.assertIsNotNone(self.files.get_file_by_id(material['stored_file_id'], 1))
         self.assertTrue(self.file_service.delete_file(material['stored_file_id'], 1)['success'])

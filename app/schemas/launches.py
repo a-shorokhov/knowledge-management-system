@@ -11,7 +11,7 @@ from schemas.notes import NoteResponse
 class LaunchDetails(BaseModel):
     starts_on: date | None = None
     ends_on: date | None = None
-    participant_count: int | None = Field(default=None, ge=0, strict=True)
+    participant_count: int | None = Field(default=None, ge=0, le=2147483647, strict=True)
     changes_summary: str | None = None
     changes_reason: str | None = None
 

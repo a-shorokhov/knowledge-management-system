@@ -32,6 +32,7 @@ class ErrorCode(str, Enum):
     INVALID_FILE_CONTENT = "INVALID_FILE_CONTENT"
     FILENAME_TOO_LONG = "FILENAME_TOO_LONG"
     FILE_UPLOAD_FAILED = "FILE_UPLOAD_FAILED"
+    FILE_JOURNAL_UNAVAILABLE = "FILE_JOURNAL_UNAVAILABLE"
     MATERIAL_SAVE_FAILED = "MATERIAL_SAVE_FAILED"
     MATERIAL_FILE_REPLACEMENT_FAILED = "MATERIAL_FILE_REPLACEMENT_FAILED"
     MATERIAL_SECTION_HAS_NOTES = "MATERIAL_SECTION_HAS_NOTES"
@@ -327,6 +328,15 @@ class FileUploadFailedException(AppException):
             status_code=503,
             error_code=ErrorCode.FILE_UPLOAD_FAILED,
             message="Не удалось загрузить файл в хранилище",
+        )
+
+
+class FileJournalUnavailableException(AppException):
+    def __init__(self):
+        super().__init__(
+            status_code=503,
+            error_code=ErrorCode.FILE_JOURNAL_UNAVAILABLE,
+            message="Журнал восстановления файлов недоступен. Повторите запрос позже",
         )
 
 

@@ -1,5 +1,8 @@
+from contextlib import contextmanager
+from hashlib import sha256
+
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -19,6 +22,43 @@ class FileUnavailableError(Exception):
 class StoredFileRepository:
     def __init__(self, db: Session = Depends(get_db)):
         self.db = db
+
+    @contextmanager
+    def cleanup_attempt(self):
+        # Call only after the parent deletion/replacement has committed.
+        # mark_file_for_deletion and delete_file commit their own durable phases.
+        # End any remaining read/failed transaction, including locks on skipped
+        # files, before the next attempt. Committed phases are not rolled back.
+        try:
+            yield
+        finally:
+            self.db.rollback()
+
+    def lock_object(self, bucket: str, storage_key: str):
+        if self.db.get_bind().dialect.name == 'postgresql':
+            key = int.from_bytes(sha256(f'{bucket}\0{storage_key}'.encode()).digest()[:8], 'big', signed=True)
+            self.db.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': key})
+
+    def get_object_for_cleanup(self, bucket: str, storage_key: str):
+        # The caller starts a fresh READ COMMITTED transaction. Registration
+        # uses the same advisory lock, including across an uncertain COMMIT.
+        if (self.db.get_bind().dialect.name == 'postgresql'
+                and self.db.connection().get_isolation_level() != 'READ COMMITTED'):
+            raise FileUnavailableError('Cleanup requires READ COMMITTED')
+        if self.db.get_bind().dialect.name == 'postgresql':
+            self.db.execute(text("SET LOCAL lock_timeout = '5s'"))
+            self.db.execute(text("SET LOCAL statement_timeout = '15s'"))
+        self.lock_object(bucket, storage_key)
+        files = self.db.scalars(select(StoredFile).where(
+            StoredFile.bucket == bucket, StoredFile.storage_key == storage_key,
+        ).with_for_update().execution_options(populate_existing=True)).all()
+        if len(files) > 1:
+            raise FileUnavailableError('Ambiguous object metadata')
+        if not files:
+            return None
+        result = self._to_dict(files[0])
+        result['used'] = self.is_file_used(result['id'])
+        return result
 
     @staticmethod
     def _to_dict(stored_file: StoredFile):

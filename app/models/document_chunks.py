@@ -21,5 +21,5 @@ class DocumentChunk(Base):
     slide_number = Column(Integer)
     sheet_name = Column(String(255))
     cell_range = Column(String(64))
-    embedding = Column(VECTOR())
+    embedding = Column(VECTOR(256), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

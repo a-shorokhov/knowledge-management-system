@@ -11,6 +11,11 @@ from core.exceptions import (
 from repositories.users import UserRepository
 
 from adapters.file_storage.s3 import S3FileStorageAdapter
+from adapters.file_cleanup_journal import FileCleanupJournal
+
+
+def get_file_cleanup_journal():
+    return FileCleanupJournal(settings.FILE_CLEANUP_DIR)
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="auth/login",
