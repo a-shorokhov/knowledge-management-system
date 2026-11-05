@@ -583,7 +583,7 @@ class ERDTests(unittest.TestCase):
         self.assertEqual(self.request('DELETE', '/users/2')[0], 403)
 
     def test_erd_tables_and_postgres_ddl(self):
-        self.assertEqual(set(database.Base.metadata.tables), {'users', 'modules', 'launches', 'run_sections', 'materials', 'stored_files', 'notes', 'launch_designs'})
+        self.assertEqual(set(database.Base.metadata.tables), {'users', 'modules', 'launches', 'run_sections', 'materials', 'stored_files', 'notes', 'launch_designs', 'launch_reflections'})
         for table in database.Base.metadata.sorted_tables:
             self.assertTrue(str(CreateTable(table).compile(dialect=postgresql.dialect())))
         self.assertEqual(len(database.Base.metadata.tables['materials'].foreign_key_constraints), 4)

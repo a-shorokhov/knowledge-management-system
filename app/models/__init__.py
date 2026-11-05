@@ -7,3 +7,5 @@ from .materials import Material
 from .notes import Note
 
 from .launch_designs import LaunchDesign
+
+from .launch_reflections import LaunchReflection

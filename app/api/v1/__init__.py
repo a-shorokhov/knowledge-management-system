@@ -7,3 +7,5 @@ from api.v1.materials import router as materials_router
 from api.v1.stored_files import router as stored_files_router
 
 from api.v1.launch_designs import router as launch_designs_router
+
+from api.v1.launch_reflections import router as launch_reflections_router
