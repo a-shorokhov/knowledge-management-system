@@ -1,7 +1,16 @@
 services:
   api:
     build: .
-    environment:
+    environment: &app_environment
+      AI_ENABLED: ${AI_ENABLED:-false}
+      YANDEX_AI_FOLDER_ID: ${YANDEX_AI_FOLDER_ID:-}
+      YANDEX_AI_API_KEY: ${YANDEX_AI_API_KEY:-}
+      AI_LLM_MODEL: ${AI_LLM_MODEL:-deepseek-v4.1-flash}
+      AI_EMBED_DOC_MODEL: ${AI_EMBED_DOC_MODEL:-text-embeddings-v2-doc/latest}
+      AI_EMBED_QUERY_MODEL: ${AI_EMBED_QUERY_MODEL:-text-embeddings-v2-query/latest}
+      AI_EMBED_DIM: 256
+      AI_TOP_K: 5
+      AI_REQUEST_TIMEOUT_SECONDS: ${AI_REQUEST_TIMEOUT_SECONDS:-120}
       DB_HOST: db
       DB_PORT: "5432"
       DB_USER: ${DB_USER:?Set DB_USER in .env}
@@ -22,6 +31,17 @@ services:
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: ["python", "app/worker.py"]
+    environment: *app_environment
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
       db:
         condition: service_healthy
 

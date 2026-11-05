@@ -7,6 +7,9 @@ class StoredFileNotFound(FileStorageError):
     pass
 
 class FileStorageAdapter(ABC):
+    def read_file(self, key: str) -> bytes:
+        raise FileStorageError("Чтение файлов не поддерживается этим хранилищем")
+
     @abstractmethod
     def upload_file(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
         pass
