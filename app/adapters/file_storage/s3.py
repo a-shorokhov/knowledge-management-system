@@ -75,3 +75,16 @@ class S3FileStorageAdapter(FileStorageAdapter):
             raise FileStorageError("Не удалось удалить файл из хранилища") from error
         except BotoCoreError as error:
             raise FileStorageError("Не удалось удалить файл из хранилища") from error
+
+    def read_file(self, key: str) -> bytes:
+        try:
+            response = self.client.get_object(Bucket=self.bucket_name, Key=key)
+            with response["Body"] as body:
+                if response.get("ContentLength", 0) > 5 * 1024 * 1024:
+                    raise FileStorageError("Размер файла превышает 5 МБ")
+                data = body.read(5 * 1024 * 1024 + 1)
+            if len(data) > 5 * 1024 * 1024:
+                raise FileStorageError("Размер файла превышает 5 МБ")
+            return data
+        except (ClientError, BotoCoreError, OSError) as error:
+            raise FileStorageError("Не удалось прочитать файл из хранилища") from error

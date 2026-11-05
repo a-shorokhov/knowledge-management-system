@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 
 from api.v1 import users_router, modules_router, launches_router, sections_router, notes_router, materials_router, stored_files_router
 from api.v1 import launch_designs_router, launch_reflections_router
+from api.v1.ai import router as ai_router
+from api.v1.ai_retrospectives import router as ai_retrospectives_router
 from core.database import engine
 from core.config import settings
 from core.handlers import register_exception_handlers
@@ -53,3 +55,5 @@ app.include_router(stored_files_router)
 app.include_router(launch_designs_router)
 
 app.include_router(launch_reflections_router)
+app.include_router(ai_router)
+app.include_router(ai_retrospectives_router)

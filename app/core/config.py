@@ -20,6 +20,16 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = Field(default_factory=list)
     FILE_CLEANUP_DIR: Path = Field(default_factory=lambda: Path.home() / '.local/state/kms/file-cleanup')
 
+    AI_ENABLED: bool = False
+    YANDEX_AI_FOLDER_ID: str = ""
+    YANDEX_AI_API_KEY: SecretStr = SecretStr("")
+    AI_LLM_MODEL: str = "deepseek-v4.1-flash"
+    AI_EMBED_DOC_MODEL: Literal["text-embeddings-v2-doc/latest"] = "text-embeddings-v2-doc/latest"
+    AI_EMBED_QUERY_MODEL: Literal["text-embeddings-v2-query/latest"] = "text-embeddings-v2-query/latest"
+    AI_EMBED_DIM: int = Field(default=256, ge=256, le=256)
+    AI_TOP_K: int = Field(default=5, ge=5, le=5)
+    AI_REQUEST_TIMEOUT_SECONDS: int = Field(default=120, ge=1, le=120)
+
     S3_ENDPOINT: str = "https://storage.yandexcloud.net"
     S3_ACCESS_KEY: str
     S3_SECRET_KEY: SecretStr

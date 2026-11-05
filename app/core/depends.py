@@ -12,6 +12,7 @@ from repositories.users import UserRepository
 
 from adapters.file_storage.s3 import S3FileStorageAdapter
 from adapters.file_cleanup_journal import FileCleanupJournal
+from core.database import get_db
 
 
 def get_file_cleanup_journal():
@@ -77,3 +78,31 @@ def get_file_storage():
         yield storage
     finally:
         storage.client.close()
+
+
+def get_ai_client():
+    from adapters.ai.yandex import YandexAIAdapter
+    client = YandexAIAdapter(settings)
+    try:
+        yield client
+    finally:
+        client.close()
+
+
+def get_rag_service(db=Depends(get_db), ai=Depends(get_ai_client)):
+    from repositories.rag import RagRepository
+    from services.rag import RagService
+    return RagService(RagRepository(db), ai)
+
+
+def get_indexing_service(db=Depends(get_db), storage=Depends(get_file_storage), ai=Depends(get_ai_client)):
+    from repositories.indexing import IndexingRepository
+    from services.indexing import IndexingService
+    return IndexingService(IndexingRepository(db), storage, ai, settings.S3_BUCKET)
+
+
+def get_retrospective_service(db=Depends(get_db), ai=Depends(get_ai_client)):
+    from repositories.ai_retrospectives import AIRetrospectiveRepository
+    from repositories.rag import RagRepository
+    from services.ai_retrospectives import AIRetrospectiveService
+    return AIRetrospectiveService(AIRetrospectiveRepository(db), RagRepository(db), ai)
