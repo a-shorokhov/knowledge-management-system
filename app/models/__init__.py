@@ -9,3 +9,6 @@ from .notes import Note
 from .launch_designs import LaunchDesign
 
 from .launch_reflections import LaunchReflection
+
+from .document_chunks import DocumentChunk
+from .ai_retrospectives import AIRetrospective

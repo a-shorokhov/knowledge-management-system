@@ -29,11 +29,11 @@ def migration_config(connection=None):
 class MigrationConfigurationTests(unittest.TestCase):
     def test_revision_chain_preserves_initial_schema(self):
         scripts = ScriptDirectory.from_config(migration_config())
-        self.assertEqual(scripts.get_heads(), ['0003_notes_reflections'])
-        self.assertEqual([revision.revision for revision in scripts.walk_revisions()], ['0003_notes_reflections', '0002_launch_designs', '0001_initial'])
+        self.assertEqual(scripts.get_heads(), ['0004_ai_storage'])
+        self.assertEqual([revision.revision for revision in scripts.walk_revisions()], ['0004_ai_storage', '0003_notes_reflections', '0002_launch_designs', '0001_initial'])
         initial = scripts.get_revision('0001_initial').module._schema()
         actual = test_runtime.database.Base.metadata
-        self.assertEqual(set(actual.tables), set(initial.tables) | {'launch_designs', 'launch_reflections'})
+        self.assertEqual(set(actual.tables), set(initial.tables) | {'launch_designs', 'launch_reflections', 'document_chunks', 'ai_retrospectives'})
         added_columns = {'starts_on', 'ends_on', 'participant_count', 'changes_summary', 'changes_reason'}
         for name, table in initial.tables.items():
             expected = set(table.columns.keys()) | (added_columns if name == 'launches' else {'problem_or_practice', 'cause', 'proposed_solution', 'priority', 'status'} if name == 'notes' else set())
@@ -64,7 +64,7 @@ class PostgreSQLMigrationTests(unittest.TestCase):
 
     def connect(self):
         connection = self.engine.connect()
-        connection.execute(sa.text(f'SET search_path TO "{self.schema}"'))
+        connection.execute(sa.text(f'SET search_path TO "{self.schema}", public'))
         connection.commit()
         return connection
 
@@ -81,7 +81,7 @@ class PostgreSQLMigrationTests(unittest.TestCase):
     def assert_current(self):
         self.connection.commit()
         command.check(migration_config(self.connection))
-        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0003_notes_reflections')
+        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0004_ai_storage')
 
     def legacy_data(self):
         statements = [
@@ -278,7 +278,7 @@ from sqlalchemy.orm import Session
 from repositories.launch_reflections import LaunchReflectionRepository
 engine = create_engine(os.environ['KMS_TEST_DATABASE_URL'], hide_parameters=True)
 with engine.connect() as connection:
-    connection.execute(text('SET search_path TO "{self.schema}"'))
+    connection.execute(text('SET search_path TO "{self.schema}", public'))
     connection.commit()
     with Session(bind=connection) as session:
         LaunchReflectionRepository(session).replace_reflection(1, 1, {{
@@ -356,7 +356,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, text
 engine = create_engine(os.environ['KMS_TEST_DATABASE_URL'], hide_parameters=True)
 with engine.connect() as connection:
-    connection.execute(text('SET search_path TO "{self.schema}"'))
+    connection.execute(text('SET search_path TO "{self.schema}", public'))
     connection.commit()
     config = Config({str(ROOT / 'alembic.ini')!r})
     config.attributes['connection'] = connection
@@ -384,11 +384,11 @@ engine.dispose()
             shutil.copytree(ROOT / 'alembic', scripts)
             config = migration_config(self.connection)
             config.set_main_option('script_location', str(scripts))
-            revision = command.revision(config, message='Добавить необязательное поле', rev_id='0004_test')
+            revision = command.revision(config, message='Добавить необязательное поле', rev_id='0005_test')
             path = Path(revision.path)
             path.write_text(path.read_text().replace('def upgrade():\n    pass', "def upgrade():\n    op.add_column('users', sa.Column('nickname', sa.String(50), nullable=True))"))
             command.upgrade(config, 'head')
             command.upgrade(config, 'head')
         user = self.connection.execute(sa.text('SELECT username,hashed_password,nickname FROM users')).one()
         self.assertEqual(tuple(user), ('kept', 'kept-hash', None))
-        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0004_test')
+        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0005_test')
