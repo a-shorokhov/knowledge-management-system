@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -9,6 +11,7 @@ from models.launch_designs import LaunchDesign
 from models.modules import Module
 from models.sections import RunSection
 from models.materials import Material
+from models.enums import MaterialKind
 from repositories.stored_files import FileUnavailableError, StoredFileRepository
 from repositories.transactions import transaction
 
@@ -150,22 +153,33 @@ class LaunchRepository:
             return None
         return self._to_dict(source)
 
+    def get_copy_design(self, launch_id: int):
+        # The source launch is already locked, as in design replacement.
+        design = self.db.scalar(
+            select(LaunchDesign).where(LaunchDesign.launch_id == launch_id)
+            .execution_options(populate_existing=True)
+        )
+        if design is None:
+            return {"template_version": 1, "data": {}}
+        return {"template_version": design.template_version, "data": deepcopy(design.data)}
+
     def get_copy_sections(self, launch_id: int):
         sections = self.db.scalars(select(RunSection).where(RunSection.launch_id == launch_id).order_by(RunSection.id)).all()
         return [{"id": section.id, "title": section.title, "description": section.description, "position": section.position} for section in sections]
 
     def get_copy_materials(self, launch_id: int):
-        materials = self.db.scalars(select(Material).where(Material.launch_id == launch_id).order_by(Material.id).execution_options(populate_existing=True)).all()
+        materials = self.db.scalars(select(Material).where(Material.launch_id == launch_id, Material.kind != MaterialKind.feedback).order_by(Material.id).execution_options(populate_existing=True)).all()
         file_ids = sorted({material.stored_file_id for material in materials})
         files = StoredFileRepository(self.db).lock_files(file_ids)
         if len(files) != len(file_ids) or any(stored_file.deletion_pending for stored_file in files):
             raise FileUnavailableError
         return [{"id": material.id, "section_id": material.section_id, "stored_file_id": material.stored_file_id, "title": material.title, "description": material.description, "kind": material.kind, "position": material.position} for material in materials]
 
-    def save_launch_copy(self, data: dict, sections: dict[int, dict], materials: list[dict]):
+    def save_launch_copy(self, data: dict, sections: dict[int, dict], materials: list[dict], design: dict):
         launch = Launch(**data)
         self.db.add(launch)
         self.db.flush()
+        self.db.add(LaunchDesign(launch_id=launch.id, **design))
         section_ids = {}
         for source_id, section_data in sections.items():
             section = RunSection(launch_id=launch.id, **section_data)

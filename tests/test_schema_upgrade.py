@@ -181,6 +181,38 @@ class PostgreSQLMigrationTests(unittest.TestCase):
             self.assertEqual(repository.get_design(launch['id'], 1)['data'], {})
         self.assert_current()
 
+    def test_postgresql_launch_copy_preserves_design_and_shared_file_links(self):
+        self.legacy_data()
+        self.upgrade()
+        self.connection.execute(sa.text("INSERT INTO run_sections (launch_id,title,position) VALUES (1,'Teaching',0),(1,'Empty',1)"))
+        self.connection.execute(sa.text("UPDATE materials SET section_id=(SELECT id FROM run_sections WHERE title='Teaching') WHERE id=1"))
+        self.connection.execute(sa.text("INSERT INTO materials (launch_id,stored_file_id,title,kind) SELECT 1,stored_file_id,'Feedback','feedback' FROM materials WHERE id=1"))
+        self.connection.commit()
+        from sqlalchemy.orm import Session
+        from repositories.launch_designs import LaunchDesignRepository
+        from repositories.launches import LaunchRepository
+        from services.launches import LaunchService
+        from schemas.launches import CreateLaunchRequest
+        data = {'project': {'stages': [{'position': 2}, {'position': 0}]}}
+        with Session(bind=self.connection) as session:
+            designs = LaunchDesignRepository(session)
+            designs.replace_design(1, 1, 1, data)
+            copied = LaunchService(repository=LaunchRepository(session)).copy_launch(
+                1, 1, CreateLaunchRequest(title='Copy', year=2028, semester='Spring'),
+            )
+            self.assertEqual(designs.get_design(copied['id'], 1)['data'], data)
+            designs.replace_design(copied['id'], 1, 1, {})
+            self.assertEqual(designs.get_design(1, 1)['data'], data)
+            launch_id = copied['id']
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM run_sections WHERE launch_id=:id'), {'id': launch_id}), 2)
+        rows = self.connection.execute(sa.text('SELECT stored_file_id,copied_from_material_id,section_id FROM materials WHERE launch_id=:id'), {'id': launch_id}).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(tuple(rows[0][:2]), (1, 1))
+        self.assertEqual(self.connection.scalar(sa.text('SELECT launch_id FROM run_sections WHERE id=:id'), {'id': rows[0].section_id}), launch_id)
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM notes WHERE launch_id=:id'), {'id': launch_id}), 0)
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM stored_files')), 1)
+        self.assert_current()
+
     def test_existing_erd_gets_missing_columns_and_cascades(self):
         ScriptDirectory.from_config(migration_config()).get_revision('0001_initial').module._schema().create_all(self.connection)
         self.connection.execute(sa.text('ALTER TABLE notes DROP COLUMN section_id CASCADE'))

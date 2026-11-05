@@ -92,6 +92,7 @@ class LaunchService:
                 source = self.repository.get_copy_source(launch_id, user_id)
                 if source is None:
                     raise LaunchNotFoundException()
+                source_design = self.repository.get_copy_design(launch_id)
                 source_sections = self.repository.get_copy_sections(launch_id)
                 source_materials = self.repository.get_copy_materials(launch_id)
                 sections = {
@@ -111,7 +112,7 @@ class LaunchService:
                     **data.model_dump(),
                     "module_id": source["module_id"],
                     "copied_from_launch_id": source["id"],
-                }, sections, materials)
+                }, sections, materials, source_design)
         except FileUnavailableError:
             raise FileUnavailableForCopyException()
         except IntegrityError:
