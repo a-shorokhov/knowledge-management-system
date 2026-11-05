@@ -69,7 +69,7 @@ class YandexAIAdapter:
         logger.info('ai_embedding tokens=%s', result.get('numTokens'))
         return validate_embedding(result.get('embedding'))
 
-    def generate(self, messages, *, max_completion_tokens=4096):
+    def generate(self, messages, *, max_completion_tokens=32768):
         result = self._post('v1/chat/completions', {
             'model': f'gpt://{self.settings.YANDEX_AI_FOLDER_ID}/{self.settings.AI_LLM_MODEL}',
             'messages': messages, 'temperature': 0,
