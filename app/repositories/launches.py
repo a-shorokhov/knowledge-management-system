@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -5,11 +7,17 @@ from sqlalchemy.orm import Session
 
 from core.database import get_db
 from models.launches import Launch
+from models.launch_designs import LaunchDesign
 from models.modules import Module
 from models.sections import RunSection
 from models.materials import Material
+from models.enums import MaterialKind
 from repositories.stored_files import FileUnavailableError, StoredFileRepository
 from repositories.transactions import transaction
+
+
+class InvalidLaunchDatesError(ValueError):
+    pass
 
 
 def lock_launches(db: Session, launch_ids: list[int]):
@@ -37,6 +45,11 @@ class LaunchRepository:
             "semester": launch.semester,
             "status": launch.status,
             "copied_from_launch_id": launch.copied_from_launch_id,
+            "starts_on": launch.starts_on,
+            "ends_on": launch.ends_on,
+            "participant_count": launch.participant_count,
+            "changes_summary": launch.changes_summary,
+            "changes_reason": launch.changes_reason,
             "created_at": launch.created_at,
             "updated_at": launch.updated_at,
         }
@@ -53,6 +66,8 @@ class LaunchRepository:
 
         try:
             self.db.add(launch)
+            self.db.flush()
+            self.db.add(LaunchDesign(launch_id=launch.id))
             self.db.flush()
             self.db.refresh(launch)
             result = self._to_dict(launch)
@@ -81,19 +96,25 @@ class LaunchRepository:
         return self._to_dict(launch) if launch is not None else None
 
     def edit_launch(self, launch_id: int, user_id: int, data: dict):
-        launch = self._get_owned_launch(launch_id, user_id)
-
-        if launch is None:
-            return None
-
         try:
+            launch = self.db.scalar(
+                select(Launch).join(Module, Launch.module_id == Module.id)
+                .where(Launch.id == launch_id, Module.owner_id == user_id)
+                .with_for_update(of=Launch).execution_options(populate_existing=True)
+            )
+            if launch is None:
+                return None
+            starts_on = data.get("starts_on", launch.starts_on)
+            ends_on = data.get("ends_on", launch.ends_on)
+            if starts_on is not None and ends_on is not None and ends_on < starts_on:
+                raise InvalidLaunchDatesError()
             for key, value in data.items():
                 setattr(launch, key, value)
             self.db.flush()
             self.db.refresh(launch)
             result = self._to_dict(launch)
             self.db.commit()
-        except SQLAlchemyError:
+        except (SQLAlchemyError, InvalidLaunchDatesError):
             self.db.rollback()
             raise
 
@@ -132,22 +153,33 @@ class LaunchRepository:
             return None
         return self._to_dict(source)
 
+    def get_copy_design(self, launch_id: int):
+        # The source launch is already locked, as in design replacement.
+        design = self.db.scalar(
+            select(LaunchDesign).where(LaunchDesign.launch_id == launch_id)
+            .execution_options(populate_existing=True)
+        )
+        if design is None:
+            return {"template_version": 1, "data": {}}
+        return {"template_version": design.template_version, "data": deepcopy(design.data)}
+
     def get_copy_sections(self, launch_id: int):
         sections = self.db.scalars(select(RunSection).where(RunSection.launch_id == launch_id).order_by(RunSection.id)).all()
         return [{"id": section.id, "title": section.title, "description": section.description, "position": section.position} for section in sections]
 
     def get_copy_materials(self, launch_id: int):
-        materials = self.db.scalars(select(Material).where(Material.launch_id == launch_id).order_by(Material.id).execution_options(populate_existing=True)).all()
+        materials = self.db.scalars(select(Material).where(Material.launch_id == launch_id, Material.kind != MaterialKind.feedback).order_by(Material.id).execution_options(populate_existing=True)).all()
         file_ids = sorted({material.stored_file_id for material in materials})
         files = StoredFileRepository(self.db).lock_files(file_ids)
         if len(files) != len(file_ids) or any(stored_file.deletion_pending for stored_file in files):
             raise FileUnavailableError
         return [{"id": material.id, "section_id": material.section_id, "stored_file_id": material.stored_file_id, "title": material.title, "description": material.description, "kind": material.kind, "position": material.position} for material in materials]
 
-    def save_launch_copy(self, data: dict, sections: dict[int, dict], materials: list[dict]):
+    def save_launch_copy(self, data: dict, sections: dict[int, dict], materials: list[dict], design: dict):
         launch = Launch(**data)
         self.db.add(launch)
         self.db.flush()
+        self.db.add(LaunchDesign(launch_id=launch.id, **design))
         section_ids = {}
         for source_id, section_data in sections.items():
             section = RunSection(launch_id=launch.id, **section_data)

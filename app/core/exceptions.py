@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 
 class ErrorCode(str, Enum):
+    INVALID_LAUNCH_DATES = "INVALID_LAUNCH_DATES"
     USER_ALREADY_EXISTS = "USER_ALREADY_EXISTS"
     EMAIL_ALREADY_EXISTS = "EMAIL_ALREADY_EXISTS"
     INCORRECT_CREDENTIALS = "INCORRECT_CREDENTIALS"
@@ -522,4 +523,14 @@ class DeletedMaterialCleanupFailedException(AppException):
             error_code=ErrorCode.DELETED_MATERIAL_CLEANUP_FAILED,
             message=f"Материал удалён, но файл №{file_id} не удалось удалить. Повторите удаление через DELETE /stored-files/{file_id}",
             details={"file_id": file_id},
+        )
+
+
+class InvalidLaunchDatesException(AppException):
+    def __init__(self):
+        super().__init__(
+            status_code=422,
+            error_code=ErrorCode.INVALID_LAUNCH_DATES,
+            message="Дата окончания не может быть раньше даты начала",
+            field="ends_on",
         )

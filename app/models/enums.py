@@ -21,3 +21,15 @@ class FileIndexStatus(str, Enum):
     processing = "processing"
     ready = "ready"
     failed = "failed"
+
+
+class NotePriority(str, Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+
+
+class NoteStatus(str, Enum):
+    open = "open"
+    in_progress = "in_progress"
+    done = "done"

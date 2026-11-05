@@ -27,15 +27,17 @@ def migration_config(connection=None):
 
 
 class MigrationConfigurationTests(unittest.TestCase):
-    def test_single_revision_is_frozen_and_matches_models(self):
+    def test_revision_chain_preserves_initial_schema(self):
         scripts = ScriptDirectory.from_config(migration_config())
-        self.assertEqual(scripts.get_heads(), ['0001_initial'])
-        revision = scripts.get_revision('head')
-        frozen = revision.module._schema()
+        self.assertEqual(scripts.get_heads(), ['0004_ai_storage'])
+        self.assertEqual([revision.revision for revision in scripts.walk_revisions()], ['0004_ai_storage', '0003_notes_reflections', '0002_launch_designs', '0001_initial'])
+        initial = scripts.get_revision('0001_initial').module._schema()
         actual = test_runtime.database.Base.metadata
-        self.assertEqual(set(frozen.tables), set(actual.tables))
-        for name, table in actual.tables.items():
-            self.assertEqual(set(frozen.tables[name].columns.keys()), set(table.columns.keys()))
+        self.assertEqual(set(actual.tables), set(initial.tables) | {'launch_designs', 'launch_reflections', 'document_chunks', 'ai_retrospectives'})
+        added_columns = {'starts_on', 'ends_on', 'participant_count', 'changes_summary', 'changes_reason'}
+        for name, table in initial.tables.items():
+            expected = set(table.columns.keys()) | (added_columns if name == 'launches' else {'problem_or_practice', 'cause', 'proposed_solution', 'priority', 'status'} if name == 'notes' else set())
+            self.assertEqual(set(actual.tables[name].columns.keys()), expected)
 
     def test_start_runs_migrations_before_server_and_stops_on_failure(self):
         spec = importlib.util.spec_from_file_location('kms_start', ROOT / 'app' / 'start.py')
@@ -62,7 +64,7 @@ class PostgreSQLMigrationTests(unittest.TestCase):
 
     def connect(self):
         connection = self.engine.connect()
-        connection.execute(sa.text(f'SET search_path TO "{self.schema}"'))
+        connection.execute(sa.text(f'SET search_path TO "{self.schema}", public'))
         connection.commit()
         return connection
 
@@ -79,7 +81,7 @@ class PostgreSQLMigrationTests(unittest.TestCase):
     def assert_current(self):
         self.connection.commit()
         command.check(migration_config(self.connection))
-        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0001_initial')
+        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0004_ai_storage')
 
     def legacy_data(self):
         statements = [
@@ -122,8 +124,186 @@ class PostgreSQLMigrationTests(unittest.TestCase):
         self.upgrade()
         self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM stored_files')), 1)
 
+    def test_design_migration_backfills_existing_launches_without_changing_data(self):
+        self.legacy_data()
+        command.upgrade(migration_config(self.connection), '0001_initial')
+        before = self.connection.execute(sa.text('SELECT id,title,description,year,semester,status,created_at,updated_at FROM launches')).all()
+        self.connection.commit()
+        self.upgrade()
+        after = self.connection.execute(sa.text('SELECT id,title,description,year,semester,status,created_at,updated_at FROM launches')).all()
+        self.assertEqual(before, after)
+        design = self.connection.execute(sa.text('SELECT launch_id,template_version,data,created_at,updated_at FROM launch_designs')).one()
+        self.assertEqual(tuple(design[:3]), (1, 1, {}))
+        self.assertIsNotNone(design.created_at)
+        self.assertIsNotNone(design.updated_at)
+        self.assertEqual(self.connection.scalar(sa.text('SELECT participant_count FROM launches WHERE id=1')), None)
+        self.assert_current()
+        self.upgrade()
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM launch_designs')), 1)
+
+    def test_design_jsonb_constraints_and_cascade(self):
+        self.legacy_data()
+        self.upgrade()
+        columns = {column['name']: column for column in sa.inspect(self.connection).get_columns('launch_designs')}
+        self.assertIsInstance(columns['data']['type'], sa.dialects.postgresql.JSONB)
+        invalid_updates = [
+            "UPDATE launch_designs SET data='[]'::jsonb",
+            "UPDATE launch_designs SET data='null'::jsonb",
+            "UPDATE launch_designs SET template_version=0",
+            "UPDATE launches SET participant_count=-1",
+            "UPDATE launches SET starts_on='2027-05-01', ends_on='2027-02-01'",
+        ]
+        for statement in invalid_updates:
+            with self.subTest(statement=statement):
+                with self.assertRaises(sa.exc.IntegrityError):
+                    with self.connection.begin_nested():
+                        self.connection.execute(sa.text(statement))
+        self.connection.execute(sa.text('DELETE FROM launches WHERE id=1'))
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM launch_designs')), 0)
+        self.connection.commit()
+
+    def test_postgresql_design_repository_roundtrip(self):
+        self.legacy_data()
+        self.upgrade()
+        from sqlalchemy.orm import Session
+        from repositories.launch_designs import LaunchDesignRepository
+        from repositories.launches import LaunchRepository
+        data = {'educational_concept': {'learning_outcomes': ['Third', 'First', 'Second']},
+                'project': {'stages': [{'position': 5}, {'position': 1}]}}
+        with Session(bind=self.connection) as session:
+            launch = LaunchRepository(session).create_launch(1, {'title': 'New', 'year': 2027, 'semester': 'Spring'})
+            repository = LaunchDesignRepository(session)
+            self.assertEqual(repository.get_design(launch['id'], 1)['data'], {})
+            repository.replace_design(launch['id'], 1, 1, data)
+            session.expire_all()
+            self.assertEqual(repository.get_design(launch['id'], 1)['data'], data)
+            repository.replace_design(launch['id'], 1, 1, {})
+            self.assertEqual(repository.get_design(launch['id'], 1)['data'], {})
+        self.assert_current()
+
+    def test_postgresql_launch_copy_preserves_design_and_shared_file_links(self):
+        self.legacy_data()
+        self.upgrade()
+        self.connection.execute(sa.text("INSERT INTO run_sections (launch_id,title,position) VALUES (1,'Teaching',0),(1,'Empty',1)"))
+        self.connection.execute(sa.text("UPDATE materials SET section_id=(SELECT id FROM run_sections WHERE title='Teaching') WHERE id=1"))
+        self.connection.execute(sa.text("INSERT INTO materials (launch_id,stored_file_id,title,kind) SELECT 1,stored_file_id,'Feedback','feedback' FROM materials WHERE id=1"))
+        self.connection.commit()
+        from sqlalchemy.orm import Session
+        from repositories.launch_designs import LaunchDesignRepository
+        from repositories.launches import LaunchRepository
+        from services.launches import LaunchService
+        from schemas.launches import CreateLaunchRequest
+        data = {'project': {'stages': [{'position': 2}, {'position': 0}]}}
+        with Session(bind=self.connection) as session:
+            designs = LaunchDesignRepository(session)
+            designs.replace_design(1, 1, 1, data)
+            copied = LaunchService(repository=LaunchRepository(session)).copy_launch(
+                1, 1, CreateLaunchRequest(title='Copy', year=2028, semester='Spring'),
+            )
+            self.assertEqual(designs.get_design(copied['id'], 1)['data'], data)
+            designs.replace_design(copied['id'], 1, 1, {})
+            self.assertEqual(designs.get_design(1, 1)['data'], data)
+            launch_id = copied['id']
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM run_sections WHERE launch_id=:id'), {'id': launch_id}), 2)
+        rows = self.connection.execute(sa.text('SELECT stored_file_id,copied_from_material_id,section_id FROM materials WHERE launch_id=:id'), {'id': launch_id}).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(tuple(rows[0][:2]), (1, 1))
+        self.assertEqual(self.connection.scalar(sa.text('SELECT launch_id FROM run_sections WHERE id=:id'), {'id': rows[0].section_id}), launch_id)
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM notes WHERE launch_id=:id'), {'id': launch_id}), 0)
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM stored_files')), 1)
+        self.assert_current()
+
+    def test_notes_migration_preserves_existing_text_links_and_timestamps(self):
+        self.legacy_data()
+        command.upgrade(migration_config(self.connection), '0002_launch_designs')
+        before = self.connection.execute(sa.text('SELECT id,launch_id,material_id,section_id,author_id,title,content,created_at,updated_at FROM notes')).all()
+        self.connection.commit()
+        self.upgrade()
+        after = self.connection.execute(sa.text('SELECT id,launch_id,material_id,section_id,author_id,title,content,created_at,updated_at FROM notes')).all()
+        self.assertEqual(before, after)
+        values = self.connection.execute(sa.text('SELECT problem_or_practice,cause,proposed_solution,priority,status FROM notes')).one()
+        self.assertEqual(tuple(values), (None, None, None, 'medium', 'open'))
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM launch_reflections')), 0)
+        self.connection.execute(sa.text("UPDATE notes SET cause='Keep cause',priority='high',status='done' WHERE id=1"))
+        self.connection.commit()
+        self.upgrade()
+        self.assertEqual(tuple(self.connection.execute(sa.text('SELECT cause,priority,status FROM notes WHERE id=1')).one()), ('Keep cause', 'high', 'done'))
+        self.assert_current()
+
+    def test_postgresql_reflection_replacement_constraints_and_cascade(self):
+        self.legacy_data()
+        self.upgrade()
+        from sqlalchemy.orm import Session
+        from repositories.launch_reflections import LaunchReflectionRepository
+        from schemas.launch_reflections import ReplaceLaunchReflectionRequest
+        with Session(bind=self.connection) as session:
+            repository = LaunchReflectionRepository(session)
+            self.assertIsNone(repository.get_reflection(1, 1)['created_at'])
+            fields = ReplaceLaunchReflectionRequest(what_went_well='Good', decisions_to_keep='Keep').model_dump()
+            first = repository.replace_reflection(1, 1, fields)
+            second = repository.replace_reflection(1, 1, ReplaceLaunchReflectionRequest(recurring_problems='Problem').model_dump())
+            self.assertEqual(second['created_at'], first['created_at'])
+            self.assertIsNone(second['what_went_well'])
+            self.assertIsNone(second['decisions_to_keep'])
+            self.assertEqual(repository.get_reflection(1, 1)['recurring_problems'], 'Problem')
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM launch_reflections')), 1)
+        for statement in [
+            "UPDATE notes SET priority='urgent'",
+            "UPDATE notes SET status='closed'",
+            "UPDATE notes SET priority=NULL",
+            "UPDATE notes SET status=NULL",
+            "INSERT INTO launch_reflections (launch_id) VALUES (1)",
+            "INSERT INTO launch_reflections (launch_id) VALUES (999999)",
+        ]:
+            with self.subTest(statement=statement):
+                with self.assertRaises(sa.exc.DBAPIError):
+                    with self.connection.begin_nested():
+                        self.connection.execute(sa.text(statement))
+        self.connection.execute(sa.text('DELETE FROM launches WHERE id=1'))
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM launch_reflections')), 0)
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM notes')), 0)
+        self.connection.commit()
+        self.assert_current()
+
+    def test_concurrent_reflection_puts_create_one_record(self):
+        self.legacy_data()
+        self.upgrade()
+        self.connection.commit()
+        code = f"""
+import sys, os
+sys.path.insert(0, {str(ROOT / 'tests')!r})
+import test_erd
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
+from repositories.launch_reflections import LaunchReflectionRepository
+engine = create_engine(os.environ['KMS_TEST_DATABASE_URL'], hide_parameters=True)
+with engine.connect() as connection:
+    connection.execute(text('SET search_path TO "{self.schema}", public'))
+    connection.commit()
+    with Session(bind=connection) as session:
+        LaunchReflectionRepository(session).replace_reflection(1, 1, {{
+            'what_went_well': sys.argv[1], 'recurring_problems': None,
+            'materials_to_update': None, 'decisions_to_keep': None,
+        }})
+engine.dispose()
+"""
+        processes = [subprocess.Popen([sys.executable, '-B', '-c', code, value], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                     for value in ('First', 'Second')]
+        try:
+            for process in processes:
+                stdout, stderr = process.communicate(timeout=30)
+                self.assertEqual(process.returncode, 0, stderr)
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate()
+        self.assertEqual(self.connection.scalar(sa.text('SELECT count(*) FROM launch_reflections WHERE launch_id=1')), 1)
+        self.assertIn(self.connection.scalar(sa.text('SELECT what_went_well FROM launch_reflections WHERE launch_id=1')), ('First', 'Second'))
+        self.assert_current()
+
     def test_existing_erd_gets_missing_columns_and_cascades(self):
-        test_runtime.database.Base.metadata.create_all(self.connection)
+        ScriptDirectory.from_config(migration_config()).get_revision('0001_initial').module._schema().create_all(self.connection)
         self.connection.execute(sa.text('ALTER TABLE notes DROP COLUMN section_id CASCADE'))
         self.connection.execute(sa.text('ALTER TABLE stored_files DROP COLUMN deletion_pending'))
         self.connection.execute(sa.text('ALTER TABLE launches DROP CONSTRAINT fk_launch_module'))
@@ -176,7 +356,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, text
 engine = create_engine(os.environ['KMS_TEST_DATABASE_URL'], hide_parameters=True)
 with engine.connect() as connection:
-    connection.execute(text('SET search_path TO "{self.schema}"'))
+    connection.execute(text('SET search_path TO "{self.schema}", public'))
     connection.commit()
     config = Config({str(ROOT / 'alembic.ini')!r})
     config.attributes['connection'] = connection
@@ -204,11 +384,11 @@ engine.dispose()
             shutil.copytree(ROOT / 'alembic', scripts)
             config = migration_config(self.connection)
             config.set_main_option('script_location', str(scripts))
-            revision = command.revision(config, message='Добавить необязательное поле', rev_id='0002_test')
+            revision = command.revision(config, message='Добавить необязательное поле', rev_id='0005_test')
             path = Path(revision.path)
             path.write_text(path.read_text().replace('def upgrade():\n    pass', "def upgrade():\n    op.add_column('users', sa.Column('nickname', sa.String(50), nullable=True))"))
             command.upgrade(config, 'head')
             command.upgrade(config, 'head')
         user = self.connection.execute(sa.text('SELECT username,hashed_password,nickname FROM users')).one()
         self.assertEqual(tuple(user), ('kept', 'kept-hash', None))
-        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0002_test')
+        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0005_test')

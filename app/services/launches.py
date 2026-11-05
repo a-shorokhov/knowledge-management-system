@@ -3,14 +3,18 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from core.exceptions import (
     ContentDeletionFailedException,
+    InvalidLaunchDatesException,
     FileCleanupFailedException,
     FileUnavailableForCopyException,
     LaunchNotFoundException,
     ModuleNotFoundException,
     RelatedDataChangedException,
 )
-from repositories.launches import LaunchRepository
+from repositories.launches import InvalidLaunchDatesError, LaunchRepository
 from repositories.modules import ModuleRepository
+from repositories.launch_designs import LaunchDesignRepository
+from repositories.launch_reflections import LaunchReflectionRepository
+from repositories.notes import NoteRepository
 from repositories.stored_files import FileUnavailableError
 from services.stored_files import StoredFileService
 from schemas.launches import CreateLaunchRequest, UpdateLaunchRequest
@@ -22,10 +26,16 @@ class LaunchService:
         repository: LaunchRepository = Depends(),
         modules: ModuleRepository = Depends(),
         files: StoredFileService = Depends(),
+        designs: LaunchDesignRepository = Depends(),
+        notes: NoteRepository = Depends(),
+        reflections: LaunchReflectionRepository = Depends(),
     ):
         self.repository = repository
         self.files = files
         self.modules = modules
+        self.designs = designs
+        self.notes = notes
+        self.reflections = reflections
 
     def create_launch(self, module_id: int, user_id: int, data: CreateLaunchRequest):
         if self.modules.get_module_by_id(module_id, user_id) is None:
@@ -51,9 +61,31 @@ class LaunchService:
 
         return {"success": True, **launch}
 
+    def get_previous_context(self, launch_id: int, user_id: int):
+        launch = self.repository.get_launch_by_id(launch_id, user_id)
+        if launch is None:
+            raise LaunchNotFoundException()
+
+        empty = {"source_launch": None, "design": None, "notes": {}, "reflection": None}
+        source_id = launch["copied_from_launch_id"]
+        if source_id is None:
+            return empty
+        source = self.repository.get_launch_by_id(source_id, user_id)
+        # A stale or inconsistent source link must not reveal another module's data.
+        if source is None or source["module_id"] != launch["module_id"]:
+            return empty
+        return {
+            "source_launch": source,
+            "design": self.designs.get_design(source_id, user_id),
+            "notes": self.notes.get_all_notes(source_id, user_id),
+            "reflection": self.reflections.get_reflection(source_id, user_id),
+        }
+
     def edit_launch(self, launch_id: int, user_id: int, data: UpdateLaunchRequest):
         try:
             launch = self.repository.edit_launch(launch_id, user_id, data.model_dump(exclude_unset=True))
+        except InvalidLaunchDatesError:
+            raise InvalidLaunchDatesException() from None
         except IntegrityError:
             raise RelatedDataChangedException()
 
@@ -89,6 +121,7 @@ class LaunchService:
                 source = self.repository.get_copy_source(launch_id, user_id)
                 if source is None:
                     raise LaunchNotFoundException()
+                source_design = self.repository.get_copy_design(launch_id)
                 source_sections = self.repository.get_copy_sections(launch_id)
                 source_materials = self.repository.get_copy_materials(launch_id)
                 sections = {
@@ -108,7 +141,7 @@ class LaunchService:
                     **data.model_dump(),
                     "module_id": source["module_id"],
                     "copied_from_launch_id": source["id"],
-                }, sections, materials)
+                }, sections, materials, source_design)
         except FileUnavailableError:
             raise FileUnavailableForCopyException()
         except IntegrityError:

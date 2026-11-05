@@ -25,6 +25,11 @@ class NoteRepository:
             "author_id": note.author_id,
             "title": note.title,
             "content": note.content,
+            "problem_or_practice": note.problem_or_practice,
+            "cause": note.cause,
+            "proposed_solution": note.proposed_solution,
+            "priority": note.priority,
+            "status": note.status,
             "created_at": note.created_at,
             "updated_at": note.updated_at,
         }

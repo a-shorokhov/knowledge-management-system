@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from core.depends import get_current_user
-from schemas.launches import CreateLaunchRequest, UpdateLaunchRequest, LaunchResponse
+from schemas.launches import CreateLaunchRequest, UpdateLaunchRequest, LaunchResponse, PreviousLaunchContextResponse
 from services.launches import LaunchService
 
 
@@ -75,3 +75,14 @@ def copy_launch(
     result = service.copy_launch(launch_id, current_user["id"], data)
 
     return result
+
+
+@router.get("/launches/{launch_id}/previous-context", response_model=PreviousLaunchContextResponse,
+            response_model_exclude_unset=True,
+            description="Актуальный контекст явно выбранного источника copied_from_launch_id: запуск, форма, заметки и ручная рефлексия. Источник должен быть доступен владельцу и относиться к тому же модулю. Если ссылки нет или источник недоступен, возвращает source_launch/design/reflection=null и notes={}. GET не изменяет БД и не ищет последний запуск.")
+def get_previous_context(
+    launch_id: int,
+    service: LaunchService = Depends(),
+    current_user: dict = Depends(get_current_user),
+):
+    return service.get_previous_context(launch_id, current_user["id"])
