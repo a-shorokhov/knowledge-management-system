@@ -19,11 +19,11 @@ class DesignPassport(DraftFields):
     module_type: Literal["project", "non_project", "mixed"] = Field(default=None, description="Проектный, непроектный или смешанный модуль")
     annotation: str = Field(default=None, description="Краткое описание содержания")
     target_audience: str = Field(default=None, description="Для кого предназначен модуль")
-    duration_weeks: int = Field(default=None, gt=0, description="Продолжительность в неделях, положительное целое")
-    duration_academic_hours: int = Field(default=None, gt=0, description="Объём в академических часах, положительное целое")
+    duration_weeks: int = Field(default=None, gt=0, le=2147483647, description="Продолжительность в неделях, положительное целое")
+    duration_academic_hours: int = Field(default=None, gt=0, le=2147483647, description="Объём в академических часах, положительное целое")
     delivery_format: Literal["offline", "online", "mixed"] = Field(default=None, description="Очный, дистанционный или смешанный формат")
     language: str = Field(default=None, description="Язык обучения")
-    planned_capacity: int = Field(default=None, ge=0, description="Плановая вместимость; не фактическое число участников запуска")
+    planned_capacity: int = Field(default=None, ge=0, le=2147483647, description="Плановая вместимость; не фактическое число участников запуска")
 
 
 class EducationalConcept(DraftFields):
@@ -35,7 +35,7 @@ class EducationalConcept(DraftFields):
 
 
 class ProjectStage(DraftFields):
-    position: int = Field(default=None, ge=0, description="Неотрицательная позиция этапа; порядок массива сохраняется без сортировки")
+    position: int = Field(default=None, ge=0, le=2147483647, description="Неотрицательная позиция этапа; порядок массива сохраняется без сортировки")
     student_activity: str = Field(default=None, description="Деятельность обучающихся на этапе")
     intermediate_result: str = Field(default=None, description="Промежуточный результат этапа")
 

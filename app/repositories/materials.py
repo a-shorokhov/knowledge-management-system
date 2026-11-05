@@ -44,6 +44,7 @@ class MaterialRepository:
 
     def create_material(self, launch_id: int, data: dict, file_data: dict):
         try:
+            StoredFileRepository(self.db).lock_object(file_data['bucket'], file_data['storage_key'])
             lock_launches(self.db, [launch_id])
             stored_file = StoredFile(**file_data)
             self.db.add(stored_file)
@@ -100,6 +101,7 @@ class MaterialRepository:
             return None
 
         try:
+            StoredFileRepository(self.db).lock_object(file_data['bucket'], file_data['storage_key'])
             lock_launches(self.db, [material.launch_id])
             self.db.refresh(material, with_for_update=True)
             previous_file_id = material.stored_file_id

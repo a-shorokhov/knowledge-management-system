@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     TOKEN_ALGORITHM: Literal["HS256"] = "HS256"
 
     CORS_ORIGINS: list[str] = Field(default_factory=list)
+    FILE_CLEANUP_DIR: Path = Field(default_factory=lambda: Path.home() / '.local/state/kms/file-cleanup')
 
     S3_ENDPOINT: str = "https://storage.yandexcloud.net"
     S3_ACCESS_KEY: str

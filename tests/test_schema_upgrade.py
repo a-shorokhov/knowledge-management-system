@@ -29,8 +29,8 @@ def migration_config(connection=None):
 class MigrationConfigurationTests(unittest.TestCase):
     def test_revision_chain_preserves_initial_schema(self):
         scripts = ScriptDirectory.from_config(migration_config())
-        self.assertEqual(scripts.get_heads(), ['0004_ai_storage'])
-        self.assertEqual([revision.revision for revision in scripts.walk_revisions()], ['0004_ai_storage', '0003_notes_reflections', '0002_launch_designs', '0001_initial'])
+        self.assertEqual(scripts.get_heads(), ['0005_embedding_dimension'])
+        self.assertEqual([revision.revision for revision in scripts.walk_revisions()], ['0005_embedding_dimension', '0004_ai_storage', '0003_notes_reflections', '0002_launch_designs', '0001_initial'])
         initial = scripts.get_revision('0001_initial').module._schema()
         actual = test_runtime.database.Base.metadata
         self.assertEqual(set(actual.tables), set(initial.tables) | {'launch_designs', 'launch_reflections', 'document_chunks', 'ai_retrospectives'})
@@ -81,7 +81,7 @@ class PostgreSQLMigrationTests(unittest.TestCase):
     def assert_current(self):
         self.connection.commit()
         command.check(migration_config(self.connection))
-        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0004_ai_storage')
+        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0005_embedding_dimension')
 
     def legacy_data(self):
         statements = [
@@ -384,11 +384,11 @@ engine.dispose()
             shutil.copytree(ROOT / 'alembic', scripts)
             config = migration_config(self.connection)
             config.set_main_option('script_location', str(scripts))
-            revision = command.revision(config, message='Добавить необязательное поле', rev_id='0005_test')
+            revision = command.revision(config, message='Добавить необязательное поле', rev_id='0006_test')
             path = Path(revision.path)
             path.write_text(path.read_text().replace('def upgrade():\n    pass', "def upgrade():\n    op.add_column('users', sa.Column('nickname', sa.String(50), nullable=True))"))
             command.upgrade(config, 'head')
             command.upgrade(config, 'head')
         user = self.connection.execute(sa.text('SELECT username,hashed_password,nickname FROM users')).one()
         self.assertEqual(tuple(user), ('kept', 'kept-hash', None))
-        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0005_test')
+        self.assertEqual(self.connection.scalar(sa.text('SELECT version_num FROM alembic_version')), '0006_test')

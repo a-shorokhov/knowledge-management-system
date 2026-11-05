@@ -1,4 +1,5 @@
 import logging
+from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ from core.exceptions import (
     FileTooLargeException,
     FileUnavailableForCopyException,
     FileUploadFailedException,
+    FileJournalUnavailableException,
     FilenameTooLongException,
     InvalidFileContentException,
     InvalidFilenameException,
@@ -31,8 +33,9 @@ from core.exceptions import (
     UnsupportedFileTypeException,
 )
 from adapters.file_storage.base import FileStorageAdapter, FileStorageError
+from adapters.file_cleanup_journal import FileCleanupJournal, JournalError
 from core.config import settings
-from core.depends import get_file_storage
+from core.depends import get_file_cleanup_journal, get_file_storage
 from models.enums import MaterialKind
 from repositories.launches import LaunchRepository
 from repositories.materials import MaterialRepository
@@ -42,6 +45,7 @@ from repositories.stored_files import FileUnavailableError
 from schemas.materials import CopyMaterialRequest, MaterialUpload, UpdateMaterialRequest
 from services.stored_files import StoredFileService
 from services.file_validation import is_valid_file_content
+from services.file_cleanup import FileCleanupService
 
 
 logger = logging.getLogger(__name__)
@@ -68,6 +72,7 @@ class MaterialService:
         storage: FileStorageAdapter = Depends(get_file_storage),
         files: StoredFileService = Depends(),
         notes: NoteRepository = Depends(),
+        journal: FileCleanupJournal = Depends(get_file_cleanup_journal),
     ):
         self.repository = repository
         self.launches = launches
@@ -75,7 +80,9 @@ class MaterialService:
         self.storage = storage
         self.files = files
         self.notes = notes
+        self.journal = journal
 
+    @contextmanager
     def _upload_file(self, user_id: int, file: MaterialUpload):
         extension = ALLOWED_MATERIAL_TYPES.get(file.content_type)
 
@@ -118,28 +125,42 @@ class MaterialService:
             raise FilenameTooLongException()
 
         try:
-            self.storage.upload_file(key, data, file.content_type)
-        except FileStorageError:
-            logger.exception("Ошибка загрузки материала в S3")
-            raise FileUploadFailedException()
+            with self.journal.create(settings.S3_BUCKET, key) as job:
+                try:
+                    self.storage.upload_file(key, data, file.content_type)
+                except FileStorageError:
+                    job.update(state='upload_uncertain', last_error_code='upload_failed')
+                    logger.error("Ошибка загрузки материала в S3; задание %s сохранено", job.data['id'])
+                    raise FileUploadFailedException() from None
+                job.update(state='uploaded')
+                # Keep the OS lock through the complete registration transaction.
+                yield {
+                    "bucket": settings.S3_BUCKET,
+                    "storage_key": key,
+                    "original_filename": filename,
+                    "mime_type": file.content_type,
+                    "size_bytes": len(data),
+                    "uploaded_by_id": user_id,
+                }, job
+                try:
+                    job.complete()
+                except JournalError:
+                    # Registration succeeded. A stale job will find the live
+                    # metadata and finish without deleting the object.
+                    logger.error("Не удалось завершить задание %s", job.data['id'])
+        except JournalError:
+            logger.error("Журнал восстановления файлов недоступен")
+            raise FileJournalUnavailableException() from None
 
-        return {
-            "success": True,
-            "data": {
-                "bucket": settings.S3_BUCKET,
-                "storage_key": key,
-                "original_filename": filename,
-                "mime_type": file.content_type,
-                "size_bytes": len(data),
-                "uploaded_by_id": user_id,
-            },
-        }
-
-    def _remove_uploaded_file(self, key: str):
+    def _remove_uploaded_file(self, job):
         try:
-            self.storage.delete_file(key)
-        except FileStorageError:
-            logger.exception("Не удалось убрать файл после ошибки БД: %s", key)
+            result = FileCleanupService(
+                self.files.repository, self.storage, settings.S3_BUCKET, self.journal,
+            ).process(job)
+            if result == 'deferred':
+                logger.warning("Компенсационная очистка отложена: %s", job.data['id'])
+        except JournalError:
+            logger.error("Задание компенсационной очистки сохранено: %s", job.data['id'])
 
     def create_material(self, launch_id: int, user_id: int, title: str, description: str | None, file: MaterialUpload, section_id: int | None = None, kind: MaterialKind = MaterialKind.other, position: int = 0):
         if self.launches.get_launch_by_id(launch_id, user_id) is None:
@@ -150,20 +171,19 @@ class MaterialService:
             if section is None or section["launch_id"] != launch_id:
                 raise SectionNotFoundInLaunchException()
 
-        uploaded = self._upload_file(user_id, file)
-
-        try:
-            material = self.repository.create_material(launch_id, {
-                "title": title,
-                "description": description,
-                "section_id": section_id,
-                "kind": kind,
-                "position": position,
-            }, uploaded["data"])
-        except SQLAlchemyError:
-            logger.exception("Ошибка сохранения материала в БД")
-            self._remove_uploaded_file(uploaded["data"]["storage_key"])
-            raise MaterialSaveFailedException()
+        with self._upload_file(user_id, file) as (file_data, job):
+            try:
+                material = self.repository.create_material(launch_id, {
+                    "title": title,
+                    "description": description,
+                    "section_id": section_id,
+                    "kind": kind,
+                    "position": position,
+                }, file_data)
+            except SQLAlchemyError:
+                logger.exception("Ошибка сохранения материала в БД")
+                self._remove_uploaded_file(job)
+                raise MaterialSaveFailedException() from None
 
         return {"success": True, **material}
 
@@ -204,18 +224,17 @@ class MaterialService:
         if self.repository.get_material_by_id(material_id, user_id) is None:
             raise MaterialNotFoundException()
 
-        uploaded = self._upload_file(user_id, file)
+        with self._upload_file(user_id, file) as (file_data, job):
+            try:
+                material = self.repository.replace_file(material_id, user_id, file_data)
+            except SQLAlchemyError:
+                logger.exception("Ошибка замены файла в БД")
+                self._remove_uploaded_file(job)
+                raise MaterialFileReplacementFailedException() from None
 
-        try:
-            material = self.repository.replace_file(material_id, user_id, uploaded["data"])
-        except SQLAlchemyError:
-            logger.exception("Ошибка замены файла в БД")
-            self._remove_uploaded_file(uploaded["data"]["storage_key"])
-            raise MaterialFileReplacementFailedException()
-
-        if material is None:
-            self._remove_uploaded_file(uploaded["data"]["storage_key"])
-            raise MaterialNotFoundException()
+            if material is None:
+                self._remove_uploaded_file(job)
+                raise MaterialNotFoundException()
 
         previous_file_id = material.pop("previous_stored_file_id")
         try:
