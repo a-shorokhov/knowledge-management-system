@@ -3,6 +3,9 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from models.enums import RunStatus
+from schemas.launch_designs import LaunchDesignResponse
+from schemas.launch_reflections import LaunchReflectionResponse
+from schemas.notes import NoteResponse
 
 
 class LaunchDetails(BaseModel):
@@ -57,3 +60,10 @@ class LaunchResponse(LaunchDetails):
     copied_from_launch_id: int | None
     created_at: datetime
     updated_at: datetime
+
+
+class PreviousLaunchContextResponse(BaseModel):
+    source_launch: LaunchResponse | None = None
+    design: LaunchDesignResponse | None = None
+    notes: dict[int, NoteResponse] = Field(default_factory=dict)
+    reflection: LaunchReflectionResponse | None = None
