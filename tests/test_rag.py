@@ -154,7 +154,7 @@ class YandexAdapterTests(unittest.TestCase):
             adapter.generate([{'role': 'user', 'content': 'Test'}], max_completion_tokens=8192)
         finally:
             adapter.close()
-        self.assertEqual(payloads[0]['max_completion_tokens'], 4096)
+        self.assertEqual(payloads[0]['max_completion_tokens'], 32768)
         self.assertEqual(payloads[1]['max_completion_tokens'], 8192)
 
     def test_generation_classifies_unfinished_filtered_empty_and_malformed_responses(self):
