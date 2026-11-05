@@ -41,7 +41,7 @@ class RetrospectiveServiceTests(unittest.TestCase):
         self.assertEqual(result['id'], 1)
         payload = json.loads(ai.generate.call_args.args[0][1]['content'])
         self.assertEqual(payload['launches'][0]['launch_id'], 1)
-        self.assertEqual(ai.generate.call_args.kwargs['max_completion_tokens'], 8192)
+        self.assertEqual(ai.generate.call_args.kwargs['max_completion_tokens'], 32768)
         self.assertIn('Planned work', str(payload))
         ai.embed.assert_not_called()
         self.assertIn('Подтверждённые наблюдения', repo.save_report.call_args.args[-1])
