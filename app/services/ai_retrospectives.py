@@ -79,7 +79,7 @@ class AIRetrospectiveService:
         if len(encoded) > 60000:
             raise AIError('RETROSPECTIVE_CONTEXT_LIMIT', 'Данные запуска превышают допустимый объём для анализа', 413)
         result = self.ai.generate([{'role': 'system', 'content': RETROSPECTIVE_RULES},
-                                   {'role': 'user', 'content': encoded}], max_completion_tokens=8192)
+                                   {'role': 'user', 'content': encoded}], max_completion_tokens=32768)
         content = result['answer']
         actual_headings = re.findall(r'^##\s+(.+?)\s*$', content, re.MULTILINE)
         citations = set(re.findall(r'\[([^\[\]\n]+)\]', content))
